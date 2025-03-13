@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Assistente de Orçamento Público - Chat{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="chat-container">
+    <aside class="chat-sidebar">
+        <div class="model-selection">
+            <h3>Modelo Atual</h3>
+            <div class="current-model">
+                <span id="currentModelName">Carregando...</span>
+                <button id="changeModelBtn" class="small-button">Alterar</button>
+            </div>
+        </div>
+        
+        <div class="conversation-nav">
+            <h3>Conversas</h3>
+            <button id="newConversationBtn" class="secondary-button">
+                <i class="fas fa-plus"></i> Nova Conversa
+            </button>
+            <ul id="conversationsList" class="conversations-list">
+                <li class="active">
+                    <a href="#">Conversa Atual</a>
+                </li>
+            </ul>
+        </div>
+        
+        <div class="info-section">
+            <h3>Sobre</h3>
+            <p>Este assistente foi treinado para responder dúvidas sobre planejamento e execução orçamentária do setor público.</p>
+            <p>Utilize linguagem natural para fazer suas perguntas.</p>
+        </div>
+    </aside>
+    
+    <section class="chat-main">
+        <div class="chat-header">
+            <h2>Conversa com o Assistente</h2>
+        </div>
+        
+        <div id="chatMessages" class="chat-messages">
+            <div class="message system">
+                <div class="message-content">
+                    <p>Olá! Sou o Assistente de Orçamento Público. Como posso ajudá-lo(a) hoje?</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat-input">
+            <form id="messageForm">
+                <textarea 
+                    id="userInput" 
+                    placeholder="Digite sua pergunta sobre orçamento público..." 
+                    rows="3"
+                    required
+                ></textarea>
+                <button type="submit" class="send-button">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </form>
+        </div>
+    </section>
+</div>
+
+<!-- Modal para seleção de modelo -->
+<div id="selectModelModal" class="modal">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h3>Selecionar Modelo</h3>
+        
+        <div id="availableModelsList" class="models-list">
+            <div class="spinner"></div>
+            <p>Carregando modelos disponíveis...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+{% endblock %}

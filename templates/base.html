@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Assistente de Orçamento Público{% endblock %}</title>
+    
+    <!-- Fontes do Google -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- CSS Principal -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    
+    <!-- CSS Específico da Página -->
+    {% block extra_css %}{% endblock %}
+    
+    <!-- Ícones -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <h1>Assistente Orçamentário</h1>
+                </div>
+                <nav class="main-nav">
+                    <ul>
+                        <li><a href="{{ url_for('index') }}" {% if request.path == url_for('index') %}class="active"{% endif %}>Início</a></li>
+                        <li><a href="{{ url_for('chat') }}" {% if request.path == url_for('chat') %}class="active"{% endif %}>Chat</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <main class="app-content">
+        <div class="container">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <footer class="app-footer">
+        <div class="container">
+            <p>&copy; Assistente de Orçamento Público - Desenvolvido para o Setor Público</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript Principal -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    
+    <!-- JavaScript Específico da Página -->
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Assistente de Orçamento Público - Início{% endblock %}
+
+{% block content %}
+<div class="welcome-section">
+    <!-- Modal para treinamento de modelo -->
+    <div id="trainModelModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h3>Treinar Novo Modelo</h3>
+            
+            <form id="trainModelForm">
+                <div class="form-group">
+                    <label for="modelType">Selecione o tipo de modelo:</label>
+                    <select id="modelType" name="modelType" required>
+                        <option value="claude">Claude (Anthropic)</option>
+                        <option value="openai">GPT (OpenAI)</option>
+                        <option value="gemini">Gemini (Google)</option>
+                    </select>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="primary-button">Iniciar Treinamento</button>
+                    <button type="button" class="cancel-button">Cancelar</button>
+                </div>
+            </form>
+            
+            <div id="trainingStatus" class="status-container hidden">
+                <div class="spinner"></div>
+                <p>Treinamento em andamento. Isso pode levar alguns minutos...</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal para gerenciar modelos -->
+    <div id="manageModelsModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h3>Gerenciar Modelos</h3>
+            
+            <div id="modelsList" class="models-list">
+                <div class="spinner"></div>
+                <p>Carregando modelos disponíveis...</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="welcome-card">
+        <h2>Bem-vindo ao Assistente de Orçamento Público</h2>
+        <p>
+            Este assistente foi desenvolvido para ajudar você com dúvidas sobre planejamento 
+            e execução orçamentária e financeira do setor público.
+        </p>
+        
+        <div class="features">
+            <div class="feature-item">
+                <i class="fas fa-comments"></i>
+                <h3>Chat Interativo</h3>
+                <p>Tire suas dúvidas diretamente com nosso assistente virtual especializado em orçamento público.</p>
+            </div>
+            
+            <div class="feature-item">
+                <i class="fas fa-brain"></i>
+                <h3>Inteligência Artificial</h3>
+                <p>Utilizamos modelos avançados de IA para fornecer respostas precisas e contextualizadas.</p>
+            </div>
+            
+            <div class="feature-item">
+                <i class="fas fa-book"></i>
+                <h3>Base de Conhecimento</h3>
+                <p>Nosso assistente foi treinado com documentos oficiais e manuais do sistema de orçamento público.</p>
+            </div>
+        </div>
+        
+        <div class="cta-container">
+            <a href="{{ url_for('chat') }}" class="cta-button">Iniciar Conversa</a>
+            
+            <div class="admin-options">
+                <h4>Opções Administrativas</h4>
+                <div class="admin-buttons">
+                    <button id="trainModelBtn" class="secondary-button">Treinar Modelo</button>
+                    <button id="manageModelsBtn" class="secondary-button">Gerenciar Modelos</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
