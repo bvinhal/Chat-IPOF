@@ -543,3 +543,94 @@ button {
         max-width: 90%;
     }
 }
+
+/* Adicione ao arquivo static/css/main.css */
+
+/* Estilos para o painel administrativo */
+.admin-section {
+    padding: 2rem 0;
+    display: flex;
+    justify-content: center;
+}
+
+.admin-card {
+    background-color: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    padding: 2rem;
+    width: 100%;
+    max-width: 900px;
+}
+
+.admin-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--light);
+    margin-bottom: 1.5rem;
+    overflow-x: auto;
+}
+
+.tab-button {
+    padding: 0.75rem 1.5rem;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    font-weight: 500;
+    color: var(--medium);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tab-button:hover {
+    color: var(--primary-color);
+}
+
+.tab-button.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+.tab-content {
+    display: none;
+    padding: 1rem 0;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.model-section {
+    margin-bottom: 2rem;
+}
+
+.model-section h4 {
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--light);
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+    margin-right: 0.5rem;
+}
+
+/* Melhorias para upload de arquivo */
+input[type="file"] {
+    display: block;
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px dashed var(--medium-light);
+    border-radius: var(--radius);
+    margin-bottom: 0.5rem;
+}
+
+small {
+    display: block;
+    color: var(--medium);
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+}

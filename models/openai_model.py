@@ -2,6 +2,7 @@ import os
 from typing import List, Dict, Any, Optional
 import glob
 import pickle
+import tiktoken
 from langchain_openai import ChatOpenAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
@@ -191,22 +192,155 @@ class OpenAIModel(AIModel):
             return "O modelo ainda não foi treinado. Por favor, realize o treinamento primeiro."
         
         try:
+            # Importa o OpenAI client para resumir a consulta se necessário
+            from openai import OpenAI
+            
+            # Inicializa o contador de tokens
+            try:
+                encoding = tiktoken.encoding_for_model(self.model_name)
+                
+                # Calcula o tamanho da consulta em tokens
+                query_tokens = len(encoding.encode(query))
+                self.logger.info(f"Tokens na consulta original: {query_tokens}")
+                
+                # Define limites mais conservadores
+                TOKEN_LIMIT = 16000  # Limite total do contexto
+                RESERVE_TOKENS = 10000  # Reservado para documentos recuperados e respostas
+                QUERY_TOKEN_LIMIT = TOKEN_LIMIT - RESERVE_TOKENS  # Limite para a consulta
+                
+                # Converte o formato do histórico do chat para estimar os tokens
+                history_tokens = 0
+                if chat_history:
+                    for msg in chat_history:
+                        if msg.get('content'):
+                            history_tokens += len(encoding.encode(msg.get('content', '')))
+                            # Adicione alguns tokens para metadados de cada mensagem
+                            history_tokens += 25  # Estimativa para role, formatting, etc.
+                
+                # Calcula tokens disponíveis considerando o histórico
+                available_tokens = QUERY_TOKEN_LIMIT - history_tokens
+                
+                # Se a consulta excede os tokens disponíveis, resumimos
+                if query_tokens > available_tokens and available_tokens > 0:
+                    self.logger.warning(f"Consulta excede o limite de tokens disponíveis ({query_tokens} > {available_tokens}). Resumindo...")
+                    
+                    # Inicializa o cliente OpenAI para resumir
+                    client = OpenAI(api_key=self.api_key)
+                    
+                    # Define um comprimento alvo em termos de proporção
+                    target_proportion = 0.8 * (available_tokens / query_tokens)
+                    target_length = int(len(query) * target_proportion)
+                    
+                    # Ajusta para um mínimo razoável
+                    target_length = max(target_length, 200)
+                    
+                    # Cria um prompt de resumo mais assertivo
+                    summarize_prompt = f"""
+                    IMPORTANTE: Resuma a seguinte consulta em NO MÁXIMO {target_length} caracteres.
+                    Priorize os pontos principais, palavras-chave e parâmetros essenciais.
+                    Mantenha apenas as informações absolutamente cruciais.
+                    
+                    CONSULTA ORIGINAL:
+                    {query}
+                    
+                    RESUMO CONCISO (máximo {target_length} caracteres):
+                    """
+                    
+                    # Chama a API para resumir com parâmetros mais restritos
+                    response = client.chat.completions.create(
+                        model="gpt-3.5-turbo",  # Modelo mais rápido e econômico para resumos
+                        messages=[
+                            {"role": "system", "content": "Você é um especialista em resumir textos de forma extremamente concisa e precisa."},
+                            {"role": "user", "content": summarize_prompt}
+                        ],
+                        max_tokens=int(available_tokens * 0.8),  # Usa apenas 80% dos tokens disponíveis
+                        temperature=0.2  # Temperatura baixa para resumos mais determinísticos e concisos
+                    )
+                    
+                    # Extrai o resumo da resposta
+                    summarized_query = response.choices[0].message.content.strip()
+                    
+                    # Verifica o tamanho do resumo em tokens
+                    summary_tokens = len(encoding.encode(summarized_query))
+                    self.logger.info(f"Consulta resumida de {query_tokens} para {summary_tokens} tokens (redução de {int((1-(summary_tokens/query_tokens))*100)}%)")
+                    
+                    # Verifica se o resumo foi realmente eficiente
+                    if summary_tokens > 0.9 * query_tokens:
+                        # Se o resumo não foi eficiente, faz um corte mais drástico
+                        self.logger.warning("Resumo não foi eficiente. Realizando corte direto...")
+                        words = query.split()
+                        # Preserva apenas 40% das palavras originais
+                        max_words = int(len(words) * 0.4)
+                        summarized_query = " ".join(words[:max_words]) + "..."
+                        summary_tokens = len(encoding.encode(summarized_query))
+                        self.logger.info(f"Consulta truncada para {summary_tokens} tokens após corte direto")
+                    
+                    # Usa o resumo como consulta
+                    query = summarized_query
+                    
+                    # Adiciona uma nota sobre o resumo no início da consulta
+                    query = f"[Esta é uma consulta resumida automaticamente para caber no limite de tokens] {query}"
+                
+            except ImportError:
+                self.logger.warning("Tiktoken não disponível, não foi possível verificar o tamanho da consulta")
+            except Exception as e:
+                self.logger.error(f"Erro ao resumir consulta: {str(e)}. Tentando abordagem alternativa...")
+                
+                # Abordagem de contingência se o resumo falhar
+                try:
+                    words = query.split()
+                    # Se a consulta for muito longa, faz um corte direto preservando apenas metade
+                    if len(words) > 200:
+                        max_words = min(200, int(len(words) * 0.5))
+                        query = " ".join(words[:max_words]) + "... [consulta truncada devido ao tamanho]"
+                        self.logger.info(f"Consulta truncada para {len(query)} caracteres")
+                except Exception as e2:
+                    self.logger.error(f"Erro ao truncar consulta: {str(e2)}. Usando consulta original.")
+            
             # Converte o formato do histórico do chat se fornecido
             langchain_history = []
             if chat_history:
+                # Limita o histórico para as últimas 5 mensagens se for muito grande
+                if len(chat_history) > 5:
+                    self.logger.info(f"Histórico grande ({len(chat_history)} mensagens). Limitando para as últimas 5.")
+                    chat_history = chat_history[-5:]
+                
                 for msg in chat_history:
                     if msg.get('role') == 'user':
                         langchain_history.append(HumanMessage(content=msg.get('content', '')))
                     elif msg.get('role') == 'assistant':
                         langchain_history.append(AIMessage(content=msg.get('content', '')))
             
-            # Gera resposta usando o modelo treinado
-            result = self.chain({
-                'question': query,
-                'chat_history': langchain_history
-            })
-            
-            return result.get('answer', "Não foi possível gerar uma resposta.")
+            # Tenta gerar resposta com limite explícito de tokens
+            try:
+                # Gera resposta usando o modelo treinado
+                result = self.chain({
+                    'question': query,
+                    'chat_history': langchain_history
+                })
+                
+                # Se a consulta foi resumida, adiciona uma nota à resposta
+                answer = result.get('answer', "Não foi possível gerar uma resposta.")
+                if query_tokens > available_tokens:
+                    answer = f"{answer}"
+                
+                return answer
+                
+            except Exception as chain_error:
+                # Se falhar devido a limite de contexto, tenta novamente sem histórico
+                if "context_length_exceeded" in str(chain_error) or "maximum context length" in str(chain_error):
+                    self.logger.warning("Erro de contexto muito longo. Tentando novamente sem histórico...")
+                    
+                    result = self.chain({
+                        'question': query,
+                        'chat_history': []  # Sem histórico
+                    })
+                    
+                    answer = result.get('answer', "Não foi possível gerar uma resposta.")
+                    return f"Nota: O histórico da conversa foi ignorado devido ao limite de contexto do modelo. A resposta a seguir é baseada apenas na sua consulta atual.\n\n{answer}"
+                else:
+                    raise  # Re-levanta outros erros
+        
         except Exception as e:
             self.logger.error(f"Erro ao gerar resposta: {str(e)}")
             return f"Desculpe, ocorreu um erro ao processar sua pergunta: {str(e)}"

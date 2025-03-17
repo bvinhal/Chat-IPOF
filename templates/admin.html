@@ -1,0 +1,114 @@
+<!-- templates/admin.html -->
+{% extends "base.html" %}
+
+{% block title %}Administração - Assistente de Orçamento Público{% endblock %}
+
+{% block content %}
+<div class="admin-section">
+    <div class="admin-card">
+        <h2>Painel Administrativo</h2>
+        
+        <div class="admin-tabs">
+            <button class="tab-button active" data-tab="model-training">Treinamento de Modelos</button>
+            <button class="tab-button" data-tab="natureza-training">Classificador de Natureza</button>
+            <button class="tab-button" data-tab="manage-models">Gerenciar Modelos</button>
+        </div>
+        
+        <!-- Tab: Treinamento de modelos RAG -->
+        <div class="tab-content active" id="model-training">
+            <h3>Treinamento do Modelo RAG (Retrieval-Augmented Generation)</h3>
+            <p>
+                Este treinamento processa documentos para criar um modelo capaz de responder perguntas
+                com base no conteúdo dos documentos de orçamento público.
+            </p>
+            
+            <form id="trainModelForm">
+                <div class="form-group">
+                    <label for="modelType">Selecione o tipo de modelo:</label>
+                    <select id="modelType" name="modelType" required>
+                        <option value="claude">Claude (Anthropic)</option>
+                        <option value="openai">GPT (OpenAI)</option>
+                        <option value="gemini">Gemini (Google)</option>
+                    </select>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="primary-button">Iniciar Treinamento</button>
+                </div>
+            </form>
+            
+            <div id="trainingStatus" class="status-container hidden">
+                <div class="spinner"></div>
+                <p>Treinamento em andamento. Isso pode levar alguns minutos...</p>
+            </div>
+        </div>
+        
+        <!-- Tab: Treinamento de classificador de natureza -->
+        <div class="tab-content" id="natureza-training">
+            <h3>Treinamento do Classificador de Natureza de Despesa</h3>
+            <p>
+                Este treinamento utiliza dados de natureza de despesa para criar um classificador
+                que identifica a natureza mais adequada a partir de descrições textuais.
+            </p>
+            
+            <form id="trainNaturezaForm">
+                <div class="form-group">
+                    <label for="embeddingProvider">Provedor de Embeddings:</label>
+                    <select id="embeddingProvider" name="embeddingProvider" required>
+                        <option value="openai">OpenAI</option>
+                        <option value="claude">Claude (usando Sentence Transformers)</option>
+                        <option value="gemini">Gemini</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="excelFile">Arquivo Excel de Naturezas (opcional):</label>
+                    <input type="file" id="excelFile" name="excelFile" accept=".xlsx,.xls">
+                    <small>Se nenhum arquivo for fornecido, usará os dados previamente carregados</small>
+                </div>
+                
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="forceRebuild" name="forceRebuild">
+                        Forçar recriação dos embeddings (mais demorado)
+                    </label>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="primary-button">Iniciar Treinamento</button>
+                </div>
+            </form>
+            
+            <div id="naturezaTrainingStatus" class="status-container hidden">
+                <div class="spinner"></div>
+                <p>Treinamento do classificador em andamento. Isso pode levar alguns minutos...</p>
+            </div>
+        </div>
+        
+        <!-- Tab: Gerenciar modelos -->
+        <div class="tab-content" id="manage-models">
+            <h3>Gerenciar Modelos</h3>
+            
+            <div class="model-section">
+                <h4>Modelos RAG</h4>
+                <div id="modelsList" class="models-list">
+                    <div class="spinner"></div>
+                    <p>Carregando modelos disponíveis...</p>
+                </div>
+            </div>
+            
+            <div class="model-section">
+                <h4>Classificadores de Natureza</h4>
+                <div id="naturezaModelsList" class="models-list">
+                    <div class="spinner"></div>
+                    <p>Carregando classificadores disponíveis...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+{% endblock %}
