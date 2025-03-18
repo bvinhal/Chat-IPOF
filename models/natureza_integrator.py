@@ -52,17 +52,57 @@ class NaturezaIntegrator:
         Returns:
             bool: True se a consulta parece ser sobre natureza de despesa
         """
-        # Palavras-chave que indicam uma consulta sobre natureza de despesa
-        keywords = [
-            "natureza", "despesa", "classificação", "orçamento", "orçamentária",
-            "elemento de despesa", "rubrica", "classificar", "empenho", 
-            "dotação", "qual a natureza", "qual o código", "qual elemento"
+        text_lower = text.lower()
+        
+        # Verificar primeiro se é uma pergunta definitória/conceitual
+        # Perguntas de definição não precisam de classificação de natureza
+        definition_patterns = [
+            "o que é", "o que são", "defina", "definição de", "conceito de",
+            "explique o que é", "significado de", "pode me explicar o que é"
         ]
         
-        text_lower = text.lower()
-        for keyword in keywords:
-            if keyword.lower() in text_lower:
+        for pattern in definition_patterns:
+            if pattern in text_lower:
+                # É uma pergunta de definição, não uma solicitação de classificação
+                return False
+        
+        # Combinações específicas que indicam consulta sobre classificação de natureza
+        specific_patterns = [
+            "natureza de despesa", "elemento de despesa", "classificar despesa",
+            "qual natureza", "qual a natureza", "qual o código da natureza",
+            "classificação de natureza", "classificação da despesa",
+            "código de natureza", "que natureza", "classificar como"
+        ]
+        
+        for pattern in specific_patterns:
+            if pattern in text_lower:
                 return True
+        
+        # Palavras individuais com peso maior
+        strong_keywords = ["natureza", "classificação", "classificar", "elemento de despesa", "rubrica"]
+        for keyword in strong_keywords:
+            if keyword.lower() in text_lower:
+                # Procura por palavras de contexto que indicam classificação
+                context_words = ["qual", "adequada", "correta", "apropriada", "sugerir", "indicar", "para", "dessa", "desta", "do"]
+                for context in context_words:
+                    if context in text_lower:
+                        return True
+        
+        # Palavras-chave que sozinhas são insuficientes, mas podem indicar em conjunto
+        weak_keywords = ["despesa", "orçamento", "empenho", "dotação", "orçamentária"]
+        keyword_count = 0
+        
+        for keyword in weak_keywords:
+            if keyword.lower() in text_lower:
+                keyword_count += 1
+        
+        # Se duas ou mais palavras frágeis estiverem presentes junto com indicadores de pergunta de classificação,
+        # consideramos que é uma consulta sobre natureza
+        if keyword_count >= 2:
+            classification_indicators = ["qual", "como", "classific", "adequado", "correto", "apropriado"]
+            for indicator in classification_indicators:
+                if indicator in text_lower:
+                    return True
         
         return False
     

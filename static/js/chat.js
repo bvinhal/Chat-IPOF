@@ -1,11 +1,12 @@
 /**
- * Script revisado para a interface de chat
+ * Script para a interface de chat com suporte a IPOF e upload de arquivos
  * Assistente de Orçamento Público
- * Com efeito de digitação para mensagens do assistente
  */
 
 // Aguarda carregamento do DOM
 document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM carregado - iniciando script de chat");
+    
     // Elementos do chat
     const chatMessages = document.getElementById('chatMessages');
     const messageForm = document.getElementById('messageForm');
@@ -13,6 +14,40 @@ document.addEventListener('DOMContentLoaded', function() {
     const currentModelName = document.getElementById('currentModelName');
     const changeModelBtn = document.getElementById('changeModelBtn');
     const newConversationBtn = document.getElementById('newConversationBtn');
+    
+    // Log para depuração
+    console.log("Elementos DOM encontrados:", {
+        chatMessages: !!chatMessages,
+        messageForm: !!messageForm,
+        userInput: !!userInput,
+        currentModelName: !!currentModelName,
+        changeModelBtn: !!changeModelBtn,
+        newConversationBtn: !!newConversationBtn
+    });
+    
+    // Elementos de upload
+    const fileUploadBtn = document.createElement('button');
+    fileUploadBtn.type = 'button';
+    fileUploadBtn.className = 'upload-button';
+    fileUploadBtn.innerHTML = '<i class="fas fa-paperclip"></i>';
+    fileUploadBtn.title = 'Anexar arquivo';
+    
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.id = 'fileInput';
+    fileInput.accept = '.pdf,.doc,.docx,.txt';
+    fileInput.style.display = 'none';
+    
+    // Adiciona os elementos de upload ao formulário
+    if (messageForm) {
+        messageForm.appendChild(fileInput);
+        const sendButton = messageForm.querySelector('.send-button');
+        if (sendButton) {
+            messageForm.insertBefore(fileUploadBtn, sendButton);
+        } else {
+            messageForm.appendChild(fileUploadBtn);
+        }
+    }
     
     // Elementos do modal de seleção de modelo
     const selectModelModal = document.getElementById('selectModelModal');
@@ -70,7 +105,12 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Função para adicionar mensagem ao chat
     function addMessage(content, role, timestamp = new Date(), withTypingEffect = true) {
-        if (!chatMessages) return;
+        if (!chatMessages) {
+            console.error("Elemento chatMessages não encontrado");
+            return;
+        }
+        
+        console.log(`Adicionando mensagem como ${role}:`, content.substring(0, 50) + "...");
         
         // Cria elemento da mensagem
         const messageElement = document.createElement('div');
@@ -192,7 +232,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Função para adicionar indicador de digitação
     function addTypingIndicator() {
-        if (!chatMessages) return;
+        if (!chatMessages) {
+            console.error("Elemento chatMessages não encontrado");
+            return;
+        }
         
         // Remove qualquer indicador existente
         removeTypingIndicator();
@@ -224,17 +267,26 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Função para carregar o nome do modelo atual
     async function loadCurrentModel() {
-        if (!currentModelName) return;
+        if (!currentModelName) {
+            console.error("Elemento currentModelName não encontrado");
+            return;
+        }
         
         try {
+            console.log("Iniciando carregamento do modelo atual");
+            currentModelName.textContent = "Carregando...";
+            
             const response = await fetch('/api/current-model');
-            const data = await response.json();
+            console.log("Resposta da API current-model:", response);
             
             if (!response.ok) {
-                throw new Error('Falha ao obter modelo atual');
+                throw new Error(`Erro HTTP: ${response.status}`);
             }
             
-            if (data.model) {
+            const data = await response.json();
+            console.log("Dados do modelo atual:", data);
+            
+            if (data && data.model) {
                 currentModelName.textContent = `${data.model.type.toUpperCase()} (${data.model.name})`;
             } else {
                 currentModelName.textContent = 'Nenhum modelo selecionado';
@@ -248,7 +300,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Função para carregar lista de modelos disponíveis
     async function loadAvailableModels() {
-        if (!availableModelsList) return;
+        if (!availableModelsList) {
+            console.error("Elemento availableModelsList não encontrado");
+            return;
+        }
         
         // Mostra mensagem de carregamento
         availableModelsList.innerHTML = `
@@ -257,12 +312,17 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
         
         try {
+            console.log("Iniciando carregamento dos modelos disponíveis");
+            
             const response = await fetch('/api/models');
-            const data = await response.json();
+            console.log("Resposta da API models:", response);
             
             if (!response.ok) {
-                throw new Error('Falha ao carregar modelos');
+                throw new Error(`Erro HTTP: ${response.status}`);
             }
+            
+            const data = await response.json();
+            console.log("Dados dos modelos disponíveis:", data);
             
             if (!data.models || data.models.length === 0) {
                 availableModelsList.innerHTML = `
@@ -327,6 +387,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Função para mudar o modelo atual
     async function changeModel(modelType) {
         try {
+            console.log(`Iniciando mudança de modelo para: ${modelType}`);
+            
             const response = await fetch('/api/change-model', {
                 method: 'POST',
                 headers: {
@@ -335,11 +397,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify({ model_type: modelType }),
             });
             
-            const data = await response.json();
+            console.log("Resposta da API change-model:", response);
             
             if (!response.ok) {
-                throw new Error(data.message || 'Falha ao alterar modelo');
+                throw new Error(`Erro HTTP: ${response.status}`);
             }
+            
+            const data = await response.json();
+            console.log("Dados da resposta change-model:", data);
             
             showNotification(data.message, 'success');
             
@@ -366,6 +431,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         try {
+            console.log("Enviando mensagem para o servidor:", message);
+            
             // Adiciona indicador de digitação
             addTypingIndicator();
             
@@ -380,17 +447,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 }),
             });
             
-            const data = await response.json();
+            console.log("Resposta da API chat:", response);
             
             if (!response.ok) {
-                throw new Error(data.message || 'Falha ao processar mensagem');
+                throw new Error(`Erro HTTP: ${response.status}`);
             }
+            
+            const data = await response.json();
+            console.log("Dados da resposta chat:", data);
             
             // Remove o indicador de digitação
             removeTypingIndicator();
             
             // Adiciona a resposta ao chat com efeito de digitação
-            addMessage(data.response, 'assistant');
+            if (data && data.response) {
+                addMessage(data.response, 'assistant');
+            } else {
+                addMessage("Desculpe, recebi uma resposta vazia do servidor.", 'system');
+            }
             
         } catch (error) {
             console.error('Erro ao enviar mensagem:', error);
@@ -401,6 +475,81 @@ document.addEventListener('DOMContentLoaded', function() {
             // Adiciona mensagem de erro
             addMessage(
                 `Desculpe, ocorreu um erro ao processar sua mensagem: ${error.message}`,
+                'system'
+            );
+        }
+    }
+    
+    // Função para enviar um arquivo para o servidor
+    async function uploadFile(file, message = '') {
+        // Verifica se o assistente já está "digitando"
+        if (isAssistantTyping) {
+            showNotification("Por favor, aguarde o assistente terminar de digitar.", "warning");
+            return;
+        }
+        
+        try {
+            // Verifica se o arquivo é válido
+            if (!file) {
+                throw new Error('Nenhum arquivo selecionado');
+            }
+            
+            // Verifica extensão permitida
+            const fileExt = file.name.split('.').pop().toLowerCase();
+            const allowedExts = ['pdf', 'doc', 'docx', 'txt'];
+            
+            if (!allowedExts.includes(fileExt)) {
+                throw new Error('Tipo de arquivo não permitido. Use PDF, DOC, DOCX ou TXT.');
+            }
+            
+            console.log(`Enviando arquivo: ${file.name} (${file.size} bytes)`);
+            
+            // Adiciona mensagem indicando o upload
+            addMessage(`📎 Enviando arquivo: ${file.name}`, 'user');
+            
+            // Adiciona indicador de digitação
+            addTypingIndicator();
+            
+            // Cria um objeto FormData para enviar o arquivo
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('message', message);
+            formData.append('history', JSON.stringify(chatHistory));
+            
+            // Envia o arquivo para o servidor
+            const response = await fetch('/api/upload-chat-file', {
+                method: 'POST',
+                body: formData
+            });
+            
+            console.log("Resposta da API upload-chat-file:", response);
+            
+            if (!response.ok) {
+                throw new Error(`Erro HTTP: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            console.log("Dados da resposta upload-chat-file:", data);
+            
+            // Remove o indicador de digitação
+            removeTypingIndicator();
+            
+            // Adiciona a resposta ao chat
+            if (data && data.response) {
+                addMessage(data.response, 'assistant');
+            } else {
+                addMessage("Desculpe, recebi uma resposta vazia do servidor.", 'system');
+            }
+            
+        } catch (error) {
+            console.error('Erro ao enviar arquivo:', error);
+            
+            // Remove o indicador de digitação
+            removeTypingIndicator();
+            
+            // Adiciona mensagem de erro
+            addMessage(
+                `Desculpe, ocorreu um erro ao processar seu arquivo: ${error.message}`,
                 'system'
             );
         }
@@ -516,8 +665,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (messageForm) {
         messageForm.addEventListener('submit', function(event) {
             event.preventDefault();
+            console.log("Formulário de mensagem enviado");
             
-            if (!userInput || !userInput.value.trim()) return;
+            if (!userInput || !userInput.value.trim()) {
+                console.log("Campo de entrada vazio, ignorando envio");
+                return;
+            }
             
             // Verifica se o assistente está digitando
             if (isAssistantTyping) {
@@ -526,6 +679,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             const message = userInput.value.trim();
+            console.log("Mensagem capturada:", message);
             
             // Adiciona a mensagem ao chat
             addMessage(message, 'user');
@@ -536,11 +690,49 @@ document.addEventListener('DOMContentLoaded', function() {
             // Envia a mensagem para o servidor
             sendMessage(message);
         });
+    } else {
+        console.error("Formulário de mensagem não encontrado");
+    }
+    
+    // Event listener para botão de upload
+    if (fileUploadBtn) {
+        fileUploadBtn.addEventListener('click', function() {
+            console.log("Botão de upload clicado");
+            fileInput.click();
+        });
+    }
+    
+    // Event listener para seleção de arquivo
+    if (fileInput) {
+        fileInput.addEventListener('change', function() {
+            console.log("Arquivo selecionado:", this.files);
+            if (this.files && this.files[0]) {
+                // Verifica se o assistente está digitando
+                if (isAssistantTyping) {
+                    showNotification("Por favor, aguarde o assistente terminar de digitar.", "warning");
+                    this.value = '';  // Limpa a seleção
+                    return;
+                }
+                
+                // Obtém o arquivo selecionado
+                const file = this.files[0];
+                
+                // Enviar o arquivo para o servidor
+                uploadFile(file, userInput.value);
+                
+                // Limpa o campo de entrada
+                userInput.value = '';
+                
+                // Limpa o input de arquivo
+                this.value = '';
+            }
+        });
     }
     
     // Event listener para botão de alterar modelo
     if (changeModelBtn) {
         changeModelBtn.addEventListener('click', function() {
+            console.log("Botão de alterar modelo clicado");
             if (selectModelModal) {
                 // Carrega modelos disponíveis
                 loadAvailableModels();
@@ -554,6 +746,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Event listener para botão de nova conversa
     if (newConversationBtn) {
         newConversationBtn.addEventListener('click', function() {
+            console.log("Botão de nova conversa clicado");
             if (confirm('Iniciar uma nova conversa? O histórico atual será perdido.')) {
                 startNewConversation();
             }
@@ -563,6 +756,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Event listener para fechar o modal
     if (closeModalBtn) {
         closeModalBtn.addEventListener('click', function() {
+            console.log("Botão de fechar modal clicado");
             if (selectModelModal) {
                 selectModelModal.style.display = 'none';
             }
@@ -572,6 +766,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Fechar o modal ao clicar fora dele
     window.addEventListener('click', function(event) {
         if (event.target === selectModelModal) {
+            console.log("Clique fora do modal detectado");
             selectModelModal.style.display = 'none';
         }
     });
@@ -601,6 +796,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Simula envio do formulário se houver conteúdo
                 if (this.value.trim() && messageForm) {
+                    console.log("Enter pressionado, enviando formulário");
                     messageForm.dispatchEvent(new Event('submit'));
                 }
             }
@@ -608,6 +804,41 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Inicialização
+    console.log("Iniciando carregamento do modelo atual");
     loadCurrentModel();
+    
+    console.log("Iniciando carregamento do histórico");
     loadSavedHistory();
+    
+    // Adicionar estilo CSS para o botão de upload
+    const uploadStyle = document.createElement('style');
+    uploadStyle.textContent = `
+        .upload-button {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--light);
+            color: var(--medium);
+            border: none;
+            border-radius: 50%;
+            margin-right: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .upload-button:hover {
+            background-color: var(--medium-light);
+            color: var(--dark);
+        }
+        
+        #messageForm {
+            display: flex;
+            align-items: flex-end;
+        }
+    `;
+    document.head.appendChild(uploadStyle);
+    
+    console.log("Inicialização do script de chat concluída");
 });

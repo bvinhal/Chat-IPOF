@@ -1,9 +1,9 @@
 /* 
- * Estilos específicos para a interface de chat
+ * Estilos específicos para a interface de chat com suporte a IPOF
  * Assistente de Orçamento Público
  */
 
-/* Layout da página de chat */
+/* Estilos existentes do chat */
 .chat-container {
     display: flex;
     height: calc(100vh - var(--header-height) - var(--footer-height) - 3rem);
@@ -180,6 +180,7 @@
 #messageForm {
     display: flex;
     gap: 0.75rem;
+    align-items: flex-end;
 }
 
 #userInput {
@@ -199,22 +200,34 @@
     box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
 }
 
-.send-button {
+.send-button, .upload-button {
     width: 42px;
     height: 42px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--primary-color);
-    color: white;
     border: none;
     border-radius: 50%;
     transition: background-color 0.2s ease-in-out;
-    align-self: flex-end;
+}
+
+.send-button {
+    background-color: var(--primary-color);
+    color: white;
 }
 
 .send-button:hover {
     background-color: var(--primary-dark);
+}
+
+.upload-button {
+    background-color: var(--light);
+    color: var(--medium);
+}
+
+.upload-button:hover {
+    background-color: var(--medium-light);
+    color: var(--dark);
 }
 
 /* Indicadores de estado */
@@ -269,6 +282,7 @@
     overflow-x: auto;
     font-family: 'Courier New', monospace;
     font-size: 0.875rem;
+    margin: 0.75rem 0;
 }
 
 .message-content code {
@@ -325,185 +339,11 @@
 }
 
 /* Estilos para o efeito de digitação */
-
-/* Cursor piscante ao final do texto sendo digitado */
 .message.assistant .message-content p {
     position: relative;
-}
-
-.message.assistant .message-content p:not(.typing-complete)::after {
-    content: '|';
-    display: inline-block;
-    opacity: 1;
-    animation: blink 0.7s infinite;
-    font-weight: normal;
-    color: var(--primary-color);
-}
-
-/* Animação do cursor piscante */
-@keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0; }
-}
-
-/* Destaque para a mensagem que está sendo digitada */
-.message.assistant {
-    transition: box-shadow 0.3s ease;
-}
-
-.message.assistant:not(.typing-complete) .message-content {
-    box-shadow: 0 0 4px rgba(37, 99, 235, 0.2);
-}
-
-/* Melhorias para o indicador de digitação */
-.typing-indicator {
-    display: flex;
-    align-items: center;
-    padding: 0.75rem 1rem;
-    background-color: rgba(219, 234, 254, 0.5);
-    border-radius: var(--radius);
-    width: fit-content;
-    margin-bottom: 1rem;
-    position: relative;
-}
-
-.typing-indicator::before {
-    content: 'Assistente está digitando';
-    font-size: 0.75rem;
-    color: var(--medium);
-    margin-right: 0.5rem;
-}
-
-.typing-indicator span {
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    margin-right: 3px;
-    background-color: var(--primary-color);
-    border-radius: 50%;
-    opacity: 0.6;
-    animation: typing 1.4s infinite both;
-}
-
-/* Estilo para texto já completamente digitado */
-.typing-complete {
-    transition: all 0.3s ease;
-}
-
-/* Adiciona suavização de rolagem para o contêiner de mensagens */
-.chat-messages {
-    scroll-behavior: smooth;
-}
-
-/* Garante que o texto tenha uma largura mínima durante a digitação */
-.message.assistant .message-content p {
     min-height: 1.5em;
 }
 
-/* Estilos aprimorados para o efeito de digitação */
-
-/* Cursor piscante ao final do texto sendo digitado */
-.message.assistant .message-content p {
-    position: relative;
-}
-
-.message.assistant .message-content p:not(.typing-complete)::after {
-    content: '|';
-    display: inline-block;
-    opacity: 1;
-    animation: blink 0.7s infinite;
-    font-weight: normal;
-    color: var(--primary-color);
-}
-
-/* Animação do cursor piscante */
-@keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0; }
-}
-
-/* Destaque para a mensagem que está sendo digitada */
-.message.assistant .message-content {
-    border-left: 3px solid var(--primary-light);
-    transition: all 0.3s ease;
-}
-
-/* Indicador de digitação aprimorado */
-.typing-indicator {
-    display: flex;
-    align-items: center;
-    padding: 0.75rem 1rem;
-    background-color: rgba(219, 234, 254, 0.5);
-    border-radius: var(--radius);
-    width: fit-content;
-    margin-bottom: 1rem;
-    position: relative;
-}
-
-.typing-indicator::before {
-    content: 'Assistente está digitando';
-    font-size: 0.75rem;
-    color: var(--medium);
-    margin-right: 0.5rem;
-}
-
-/* Pontos animados do indicador de digitação */
-.typing-indicator span {
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    margin-right: 3px;
-    background-color: var(--primary-color);
-    border-radius: 50%;
-    opacity: 0.6;
-    animation: typing 1.4s infinite both;
-}
-
-.typing-indicator span:nth-child(2) {
-    animation-delay: 0.2s;
-}
-
-.typing-indicator span:nth-child(3) {
-    animation-delay: 0.4s;
-}
-
-@keyframes typing {
-    0% {
-        opacity: 0.6;
-        transform: translateY(0);
-    }
-    50% {
-        opacity: 1;
-        transform: translateY(-5px);
-    }
-    100% {
-        opacity: 0.6;
-        transform: translateY(0);
-    }
-}
-
-/* Adiciona suavização de rolagem para o contêiner de mensagens */
-.chat-messages {
-    scroll-behavior: smooth;
-}
-
-/* Garante que o texto tenha espaço suficiente durante a digitação */
-.message.assistant .message-content p {
-    min-height: 1.5em;
-    word-break: break-word;
-}
-
-/* Destaque para os elementos formatados em markdown durante a digitação */
-.message.assistant .message-content a,
-.message.assistant .message-content code,
-.message.assistant .message-content strong,
-.message.assistant .message-content em {
-    transition: all 0.2s ease;
-}
-
-/* Estilos para o efeito de digitação do chat */
-
-/* Cursor piscante para o elemento em digitação */
 .message.assistant .message-content p.typing::after {
     content: '|';
     display: inline-block;
@@ -536,47 +376,148 @@
     margin-right: 8px;
 }
 
-.typing-indicator span {
+/* Melhorias para o IPOF */
+
+/* Estilo para o JSON formatado */
+.message-content .json-code {
+    background-color: #f1f5f9;
+    padding: 1rem;
+    border-radius: 0.25rem;
+    overflow-x: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.875rem;
+    white-space: pre;
+    margin: 0.75rem 0;
+}
+
+/* Estilos para as etapas do IPOF */
+.ipof-step {
+    border-left: 3px solid var(--primary-color);
+    padding-left: 1rem;
+    margin: 1rem 0;
+}
+
+.ipof-step h4 {
+    color: var(--primary-color);
+    margin-bottom: 0.5rem;
+}
+
+.ipof-step-number {
     display: inline-block;
-    width: 6px;
-    height: 6px;
-    margin-right: 3px;
+    width: 24px;
+    height: 24px;
     background-color: var(--primary-color);
+    color: white;
     border-radius: 50%;
-    animation: bounce 1.3s ease infinite;
+    text-align: center;
+    line-height: 24px;
+    margin-right: 0.5rem;
+    font-weight: bold;
+    font-size: 0.875rem;
 }
 
-.typing-indicator span:nth-child(2) {
-    animation-delay: 0.15s;
+/* Status do upload de arquivo */
+.file-upload-status {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    background-color: #f0f9ff;
+    border-radius: var(--radius);
+    margin-bottom: 0.75rem;
 }
 
-.typing-indicator span:nth-child(3) {
-    animation-delay: 0.3s;
+.file-upload-status .file-icon {
+    margin-right: 0.75rem;
+    font-size: 1.25rem;
+    color: var(--primary-color);
 }
 
-@keyframes bounce {
-    0%, 60%, 100% { transform: translateY(0); }
-    30% { transform: translateY(-4px); }
+.file-upload-status .file-info {
+    flex: 1;
 }
 
-/* Realce sutil para a mensagem atual do assistente */
-.message.assistant .message-content p.typing {
-    border-right: 2px solid transparent;
+.file-upload-status .file-name {
+    font-weight: 500;
+    margin-bottom: 0.25rem;
 }
 
-/* Espaço mínimo para a área de digitação */
-.message.assistant .message-content p {
-    min-height: 20px;
+.file-upload-status .file-size {
+    font-size: 0.75rem;
+    color: var(--medium);
 }
 
-/* Rolagem suave para o contêiner de mensagens */
-.chat-messages {
-    scroll-behavior: smooth;
+.file-upload-status .upload-progress {
+    height: 4px;
+    background-color: var(--light);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 0.25rem;
 }
 
-/* Ajuste do espaçamento para elementos formatados */
-.message-content pre,
-.message-content code {
-    margin-top: 4px;
-    margin-bottom: 4px;
+.file-upload-status .upload-progress-bar {
+    height: 100%;
+    background-color: var(--primary-color);
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+/* Tabela IPOF */
+.ipof-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+}
+
+.ipof-table th, 
+.ipof-table td {
+    padding: 0.75rem;
+    border: 1px solid var(--light);
+    text-align: left;
+}
+
+.ipof-table th {
+    background-color: var(--ultra-light);
+    font-weight: 600;
+}
+
+.ipof-table tr:nth-child(even) {
+    background-color: rgba(240, 249, 255, 0.5);
+}
+
+.ipof-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.ipof-button {
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius);
+    border: none;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.ipof-button.primary {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.ipof-button.primary:hover {
+    background-color: var(--primary-dark);
+}
+
+.ipof-button.secondary {
+    background-color: var(--light);
+    color: var(--medium-dark);
+}
+
+.ipof-button.secondary:hover {
+    background-color: var(--medium-light);
+}
+
+/* Campo de arquivo */
+#fileInput {
+    display: none;
 }

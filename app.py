@@ -1,25 +1,47 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, url_for, redirect
 import os
+import uuid
+import mimetypes
+import shutil
+import glob
+import time
+import json
+from datetime import datetime
+from werkzeug.utils import secure_filename
+
 from config import active_config
 
 # Importar controllers
-from controllers.enhanced_chat_controller import EnhancedChatController
+from controllers.enhanced_ipof_chat_controller import EnhancedIPOFChatController
 from controllers.training_controller import TrainingController
 
 # Importar models
 from models.natureza_classifier import NaturezaClassifier
+from models.ipof_model import IPOF, ParcelaIPOF
+from models.chat_natureza_handler import ChatNaturezaHandler
 
 # Cria os diretórios necessários se não existirem
 os.makedirs(active_config.DATA_DIR, exist_ok=True)
 os.makedirs(active_config.TRAINING_DATA_DIR, exist_ok=True)
 os.makedirs(active_config.MODELS_DIR, exist_ok=True)
+os.makedirs(os.path.join(active_config.DATA_DIR, 'temp'), exist_ok=True)
+os.makedirs(os.path.join(active_config.DATA_DIR, 'uploads'), exist_ok=True)
 
 app = Flask(__name__)
 app.config.from_object(active_config)
+app.config['UPLOAD_FOLDER'] = os.path.join(active_config.DATA_DIR, 'uploads')
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Limita uploads a 16MB
 
 # Inicializa controladores
-chat_controller = EnhancedChatController()
+chat_controller = EnhancedIPOFChatController()
 training_controller = TrainingController()
+
+# Tipos de arquivos permitidos
+ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'txt'}
+
+def allowed_file(filename):
+    """Verifica se o arquivo tem uma extensão permitida."""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 @app.route('/')
@@ -47,6 +69,66 @@ def handle_chat():
     return jsonify({
         'response': response
     })
+
+
+@app.route('/api/upload-chat-file', methods=['POST'])
+def upload_chat_file():
+    """Endpoint para processar upload de arquivo durante o chat"""
+    # Verifica se há um arquivo na requisição
+    if 'file' not in request.files:
+        return jsonify({
+            'success': False,
+            'message': 'Nenhum arquivo encontrado'
+        }), 400
+    
+    file = request.files['file']
+    
+    # Verifica se um arquivo foi selecionado
+    if file.filename == '':
+        return jsonify({
+            'success': False,
+            'message': 'Nenhum arquivo selecionado'
+        }), 400
+    
+    # Verifica se o arquivo tem uma extensão permitida
+    if file and allowed_file(file.filename):
+        # Gera um nome seguro para o arquivo
+        original_filename = secure_filename(file.filename)
+        filename = f"{uuid.uuid4()}_{original_filename}"
+        
+        # Caminho para salvar o arquivo
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        
+        # Salva o arquivo
+        file.save(file_path)
+        
+        # Determina o tipo de arquivo para processamento
+        file_type = original_filename.rsplit('.', 1)[1].lower()
+        
+        # Mensagem adicional (opcional)
+        message = request.form.get('message', '')
+        
+        # Histórico do chat (opcional)
+        chat_history = request.form.get('history', '[]')
+        try:
+            chat_history = json.loads(chat_history)
+        except:
+            chat_history = []
+        
+        # Processa o arquivo
+        response = chat_controller.process_file(file_path, file_type, message, chat_history)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Arquivo processado com sucesso',
+            'response': response,
+            'file_path': file_path
+        })
+    
+    return jsonify({
+        'success': False,
+        'message': 'Tipo de arquivo não permitido. Use PDF, DOC, DOCX ou TXT.'
+    }), 400
 
 
 @app.route('/api/train', methods=['POST'])
@@ -126,7 +208,7 @@ def delete_model():
     else:
         return jsonify(result), 400
 
-# Adicione uma rota para treinamento do classificador de natureza
+
 @app.route('/api/train-natureza', methods=['POST'])
 def train_natureza_classifier():
     """Endpoint da API para treinar o classificador de natureza de despesa"""
@@ -165,13 +247,12 @@ def train_natureza_classifier():
             'message': f'Erro ao treinar classificador: {str(e)}'
         }), 500
 
+
 @app.route('/admin')
 def admin_panel():
     """Rota para o painel de administração"""
     return render_template('admin.html')
 
-
-# Adicione ao arquivo app.py
 
 @app.route('/api/upload-excel', methods=['POST'])
 def upload_excel():
@@ -210,6 +291,7 @@ def upload_excel():
         'success': False,
         'message': 'Formato de arquivo não suportado. Use .xlsx ou .xls'
     }), 400
+
 
 @app.route('/api/natureza-models', methods=['GET'])
 def get_natureza_models():
@@ -261,6 +343,7 @@ def get_natureza_models():
             'models': []
         })
 
+
 @app.route('/api/set-natureza-provider', methods=['POST'])
 def set_natureza_provider():
     """Endpoint para definir o provedor de classificação de natureza"""
@@ -299,6 +382,7 @@ def set_natureza_provider():
             'message': f'Erro ao definir provedor: {str(e)}'
         }), 500
 
+
 @app.route('/api/delete-natureza-model', methods=['POST'])
 def delete_natureza_model():
     """Endpoint para excluir um classificador de natureza"""
@@ -320,16 +404,8 @@ def delete_natureza_model():
                 'message': f'Modelo não encontrado: {model_id}'
             }), 404
         
-        # Exclui os arquivos dentro do diretório
-        for file_name in os.listdir(model_path):
-            file_path = os.path.join(model_path, file_name)
-            if os.path.isfile(file_path):
-                os.unlink(file_path)
-            elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)
-        
-        # Exclui o diretório
-        os.rmdir(model_path)
+        # Exclui o diretório e todo seu conteúdo
+        shutil.rmtree(model_path)
         
         return jsonify({
             'success': True,
@@ -343,6 +419,41 @@ def delete_natureza_model():
             'message': f'Erro ao excluir classificador: {str(e)}'
         }), 500
 
+
+# Limpa arquivos temporários periodicamente (pode ser implementado como uma tarefa agendada)
+def clean_temp_files():
+    """Limpa arquivos temporários antigos"""
+    try:
+        # Diretório de uploads
+        upload_dir = app.config['UPLOAD_FOLDER']
         
+        # Tempo atual em segundos
+        now = time.time()
+        
+        # Tempo limite (24 horas)
+        time_limit = 24 * 60 * 60
+        
+        # Lista todos os arquivos no diretório de uploads
+        for filename in os.listdir(upload_dir):
+            file_path = os.path.join(upload_dir, filename)
+            
+            # Verifica se é um arquivo (não um diretório)
+            if os.path.isfile(file_path):
+                # Obtém a hora da última modificação do arquivo
+                file_time = os.path.getmtime(file_path)
+                
+                # Se o arquivo for mais antigo que o limite, exclui
+                if now - file_time > time_limit:
+                    os.remove(file_path)
+                    app.logger.info(f"Arquivo temporário excluído: {file_path}")
+    
+    except Exception as e:
+        app.logger.error(f"Erro ao limpar arquivos temporários: {str(e)}")
+
+
+# Executa a limpeza a cada inicio da aplicação
+clean_temp_files()
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=active_config.DEBUG)

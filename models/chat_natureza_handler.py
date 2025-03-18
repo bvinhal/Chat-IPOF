@@ -80,14 +80,14 @@ class ChatNaturezaHandler:
             validation_response = natureza_result['validation']['response']
             
             # Adiciona a recomendação formatada ao final da resposta original
-            enhanced = "" #original_response + "\n\n---\n\n"
+            enhanced = original_response + "\n\n---\n\n"
             enhanced += "**Classificação de Natureza de Despesa:**\n\n"
             enhanced += validation_response
             
             return enhanced
         
         # Se não temos validação, criamos uma resposta formatada com as previsões
-        enhanced = ""#original_response + "\n\n---\n\n"
+        enhanced = original_response + "\n\n---\n\n"
         enhanced += "**Classificação de Natureza de Despesa:**\n\n"
         
         if recommended:
@@ -95,8 +95,6 @@ class ChatNaturezaHandler:
             enhanced += f"**{recommended['codigo']} - {recommended['nome']}**\n"
             enhanced += f"(Confiança: {recommended['confianca']:.2%})\n\n"
         
-# models/chat_natureza_handler.py (continuação)
-
         if len(predictions) > 1:
             enhanced += "Outras possíveis classificações de natureza de despesa incluem:\n\n"
             

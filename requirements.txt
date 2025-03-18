@@ -20,7 +20,8 @@ langchain_google_genai
 # Processamento de documentos
 python-docx>=0.8.11
 PyPDF2>=3.0.1
-pdfminer.six>=20221105
+pdfminer.six>=20191110
+textract>=1.6.5  # Opcional, para melhor extração de DOCs
 
 # Banco de dados
 sqlalchemy>=2.0.20
@@ -32,3 +33,4 @@ sentence-transformers>=2.2.2
 # Ambiente e utilidades
 python-dotenv>=1.0.0
 tqdm>=4.66.1
+tiktoken>=0.5.1  # Para contagem de tokens da OpenAI
