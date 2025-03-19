@@ -169,7 +169,7 @@ class IPOF:
             # Verifica se a dotação tem pelo menos 8 caracteres
             if len(dotacao_orcamentaria) >= 8:
                 # Extrai 4 dígitos a partir da quinta posição (índice 5)
-                self.unidade_orcamentaria = dotacao_orcamentaria[5:4]
+                self.unidade_orcamentaria = dotacao_orcamentaria[5:9]
             else:
                 self.unidade_orcamentaria = "N/A"
         except Exception as e:

@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, jsonify, url_for, redirect
+from config import active_config
+from flask import Flask, render_template, request, jsonify, url_for, redirect, send_from_directory
 import os
 import uuid
 import mimetypes
@@ -26,6 +27,9 @@ os.makedirs(active_config.TRAINING_DATA_DIR, exist_ok=True)
 os.makedirs(active_config.MODELS_DIR, exist_ok=True)
 os.makedirs(os.path.join(active_config.DATA_DIR, 'temp'), exist_ok=True)
 os.makedirs(os.path.join(active_config.DATA_DIR, 'uploads'), exist_ok=True)
+os.makedirs(os.path.join(active_config.DATA_DIR, 'ipof_html'), exist_ok=True)
+ipof_html_dir = os.path.abspath(os.path.join(active_config.DATA_DIR, 'ipof_html'))
+os.makedirs(ipof_html_dir, exist_ok=True)
 
 app = Flask(__name__)
 app.config.from_object(active_config)
@@ -450,6 +454,29 @@ def clean_temp_files():
     except Exception as e:
         app.logger.error(f"Erro ao limpar arquivos temporários: {str(e)}")
 
+    @app.route('/ipof/<filename>')
+    def serve_ipof_html(filename):
+        """
+        Serve um arquivo HTML de IPOF.
+        
+        Args:
+            filename: Nome do arquivo HTML
+            
+        Returns:
+            O arquivo HTML solicitado
+        """
+        # Adicione log para depuração
+        app.logger.info(f"Solicitação para servir arquivo IPOF: {filename}")
+        app.logger.info(f"Procurando em: {ipof_html_dir}")
+        
+        # Verificar se o arquivo existe antes de tentar servi-lo
+        file_path = os.path.join(ipof_html_dir, filename)
+        if os.path.isfile(file_path):
+            app.logger.info(f"Arquivo encontrado: {file_path}")
+        else:
+            app.logger.error(f"Arquivo não encontrado: {file_path}")
+        
+        return send_from_directory(ipof_html_dir, filename)
 
 # Executa a limpeza a cada inicio da aplicação
 clean_temp_files()

@@ -14,6 +14,7 @@ from models.ipof_model import IPOF, ParcelaIPOF
 from models.natureza_classifier import NaturezaClassifier
 from controllers.chat_controller import ChatController
 from utils.document_utils import extract_text_from_file, extract_valor_monetario, extract_meses
+from utils.ipof_html_generator import IPOFHtmlGenerator
 
 # Configuração de logging
 logging.basicConfig(
@@ -66,6 +67,12 @@ class IPOFController:
         # IPOF atual
         self.ipof_atual = None
         
+        # Gerador de HTML para IPOF
+        self.html_generator = IPOFHtmlGenerator()
+        
+        # Nome do arquivo HTML gerado (se houver)
+        self.html_file_name = None
+        
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
     
     def iniciar_criacao_ipof(self) -> str:
@@ -87,6 +94,7 @@ class IPOFController:
             'data_inicio': None
         }
         self.ipof_atual = None
+        self.html_file_name = None
         
         # Retorna mensagem solicitando a descrição
         return (
@@ -191,19 +199,19 @@ class IPOFController:
             
             # Cria um prompt para resumir o texto
             prompt = (
-                    "Resuma este arquivo destacando os itens mais importantes. Procure informações como objeto da contratação "
-                    "para integrae o resumo, sendo esta informação a primeira que deve aparecer na resposta. Dentre estes itens, "
-                    "tente encontrar valores monetário globais que possamos entender e periodos de tempo que nos permita encontrar "
-                    "um padrão de quantidade de meses. Seja criado mais duas linhas sendo uma contendo o valor total identficado e "
-                    "a outra o tempo de validade do contrato ou coisa parecida. Este padrão deverá ser Valor total da despesa: R$ e "
-                    "Quantidade de meses previstos: . Caso não encontrem tais informações, deverá ser informado não encontrado no "
-                    "lugar dos valores. No resumo não coloque caracteres especiais como * para serparar os principais itens pedidos "
-                    "que foram encontrados :\n\n{text}"
+                    f"Resuma este arquivo destacando os itens mais importantes. Procure informações como objeto da contratação "
+                    f"para integrae o resumo, sendo esta informação a primeira que deve aparecer na resposta. Dentre estes itens, "
+                    f"tente encontrar valores monetário globais que possamos entender e periodos de tempo que nos permita encontrar "
+                    f"um padrão de quantidade de meses. Seja criado mais duas linhas sendo uma contendo o valor total identficado e "
+                    f"a outra o tempo de validade do contrato ou coisa parecida. Este padrão deverá ser Valor total da despesa: R$ e "
+                    f"Quantidade de meses previstos: . Caso não encontrem tais informações, deverá ser informado não encontrado no "
+                    f"lugar dos valores. No resumo não coloque caracteres especiais como * para serparar os principais itens pedidos "
+                    f"que foram encontrados :\n\n{texto}"
             )
             
             # Chama a API da OpenAI para resumir o texto usando GPT-3.5 Turbo
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-3.5-turbo", #gpt-4-turbo
                 messages=[
                     {"role": "system", "content": "Você é um especialista em finanças públicas e orçamento governamental."},
                     {"role": "user", "content": prompt}
@@ -571,43 +579,92 @@ class IPOFController:
                 natureza_despesa=self.dados_temp['natureza_despesa']
             )
             
+            # Gera o arquivo HTML do IPOF
+            self.html_file_name = self._gerar_html_ipof()
+            
         except Exception as e:
             self.logger.error(f"Erro ao gerar IPOF: {str(e)}")
     
-    def _visualizar_ipof(self) -> str:
+    def _gerar_html_ipof(self) -> Optional[str]:
         """
-        Retorna a visualização formatada do IPOF.
+        Gera um arquivo HTML para o IPOF atual.
         
         Returns:
-            str: IPOF formatado
+            Optional[str]: Nome do arquivo HTML gerado ou None em caso de erro
+        """
+        if not self.ipof_atual:
+            self.logger.error("Tentativa de gerar HTML com IPOF não inicializado")
+            return None
+        
+        try:
+            # Converte o IPOF para dicionário
+            ipof_dict = self.ipof_atual.to_dict()
+            
+            # Gera o HTML usando o gerador
+            return self.html_generator.generate_html(ipof_dict)
+            
+        except Exception as e:
+            self.logger.error(f"Erro ao gerar HTML do IPOF: {str(e)}")
+            return None
+    
+    def _visualizar_ipof(self) -> str:
+        """
+        Retorna um resumo do IPOF com link para versão HTML completa.
+        
+        Returns:
+            str: Resumo do IPOF com link para visualização HTML
         """
         if not self.ipof_atual:
             return "Erro: IPOF não encontrado. Por favor, tente criar novamente."
         
-        resposta = self.ipof_atual.formatado()
+        # Criar um resumo do IPOF em vez de mostrar a formatação completa
+        ipof = self.ipof_atual
+        
+        # Resumo com informações principais
+        resposta = "### IPOF - Resumo ###\n\n"
+        resposta += f"Processo: {ipof.numero_processo}\n"
+        resposta += f"Valor Total: R$ {ipof.valor_total:.2f}\n"
+        resposta += f"Quantidade de Parcelas: {len(ipof.parcelas)}\n"
+        
+        # Adiciona o link para o HTML
+        if self.html_file_name:
+            link_html = f"/ipof/{self.html_file_name}"
+            resposta += f"\n\n### Visualização Completa do IPOF ###\n"
+            resposta += f"Para visualizar todos os detalhes do IPOF, incluindo todas as parcelas, clique no link abaixo:\n"
+            resposta += f"[Abrir IPOF Completo em Nova Página]({link_html})\n\n"
+        else:
+            resposta += "\n\nOcorreu um erro ao gerar a visualização em HTML. Por favor, tente novamente ou contate o suporte.\n\n"
         
         resposta += (
-            "\n\nO que deseja fazer agora?\n"
+            "O que deseja fazer agora?\n"
             "- Digite 'json' para obter o IPOF em formato JSON\n"
             "- Digite 'novo' para criar um novo IPOF\n"
             "- Digite qualquer outra coisa para voltar ao chat normal"
         )
         
         return resposta
-    
+        
     def _gerar_json(self) -> str:
         """
-        Retorna o IPOF em formato JSON.
+        Retorna o IPOF em formato JSON com link para visualização HTML.
         
         Returns:
-            str: IPOF em formato JSON
+            str: IPOF em formato JSON com link para visualização
         """
         if not self.ipof_atual:
             return "Erro: IPOF não encontrado. Por favor, tente criar novamente."
         
+        html_link = ""
+        if self.html_file_name:
+            link_html = f"/ipof/{self.html_file_name}"
+            html_link = f"\n\n### Visualização HTML Disponível ###\n"
+            html_link += f"Você pode visualizar e imprimir o IPOF em formato HTML clicando no link abaixo:\n"
+            html_link += f"[Abrir IPOF em nova página]({link_html})"
+        
         return (
             "Aqui está o IPOF em formato JSON:\n\n"
-            f"```json\n{self.ipof_atual.to_json()}\n```\n\n"
+            f"```json\n{self.ipof_atual.to_json()}\n```"
+            f"{html_link}\n\n"
             "O que deseja fazer agora?\n"
             "- Digite 'visualizar' para ver o IPOF formatado\n"
             "- Digite 'novo' para criar um novo IPOF\n"

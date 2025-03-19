@@ -16,3 +16,5 @@ data/natureza/natureza_despesa.xlsx
 data/Relação_natureza_x_descrição_x_descrição_PDF.xlsx
 models/__pycache__/openai_model.cpython-310.pyc
 data/uploads/
+data/ipof_html/
+utils/__pycache__/
