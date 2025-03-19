@@ -637,13 +637,12 @@ class IPOFController:
         
         resposta += (
             "O que deseja fazer agora?\n"
-            "- Digite 'json' para obter o IPOF em formato JSON\n"
             "- Digite 'novo' para criar um novo IPOF\n"
             "- Digite qualquer outra coisa para voltar ao chat normal"
         )
         
         return resposta
-        
+                
     def _gerar_json(self) -> str:
         """
         Retorna o IPOF em formato JSON com link para visualização HTML.

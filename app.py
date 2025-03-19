@@ -478,6 +478,51 @@ def clean_temp_files():
         
         return send_from_directory(ipof_html_dir, filename)
 
+    @app.route('/api/ipof/export', methods=['POST'])
+    def export_ipof_json():
+        """Endpoint para salvar o IPOF em formato JSON para SIAFIC."""
+        try:
+            # Obtém os dados do IPOF do corpo da requisição
+            data = request.json
+            
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'message': 'Dados do IPOF não fornecidos'
+                }), 400
+            
+            # Gera um nome de arquivo único baseado no número do processo
+            processo = data.get('numero_processo', 'sem_processo')
+            processo_safe = processo.replace('/', '_').replace('\\', '_')
+            
+            # Cria diretório para exportações SIAFIC se não existir
+            siafic_dir = os.path.join(active_config.DATA_DIR, 'siafic_exports')
+            os.makedirs(siafic_dir, exist_ok=True)
+            
+            # Adiciona timestamp ao nome do arquivo para garantir unicidade
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"ipof_siafic_{processo_safe}_{timestamp}.json"
+            
+            # Caminho completo do arquivo
+            file_path = os.path.join(siafic_dir, filename)
+            
+            # Salva os dados em formato JSON
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            
+            return jsonify({
+                'success': True,
+                'message': 'IPOF exportado com sucesso para SIAFIC',
+                'file_path': filename
+            })
+            
+        except Exception as e:
+            app.logger.error(f"Erro ao exportar IPOF para JSON: {str(e)}")
+            return jsonify({
+                'success': False,
+                'message': f'Erro ao exportar IPOF: {str(e)}'
+            }), 500
+            
 # Executa a limpeza a cada inicio da aplicação
 clean_temp_files()
 

@@ -18,3 +18,4 @@ models/__pycache__/openai_model.cpython-310.pyc
 data/uploads/
 data/ipof_html/
 utils/__pycache__/
+data/siafic_exports/
