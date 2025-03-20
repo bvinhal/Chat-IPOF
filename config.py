@@ -28,7 +28,7 @@ class Config:
     DEFAULT_MODEL = os.environ.get('DEFAULT_MODEL') or 'openai'  # claude, openai, gemini
     OPENAI_MODEL = os.environ.get('OPENAI_MODEL') or 'gpt-3.5-turbo' #'gpt-4'
     CLAUDE_MODEL = os.environ.get('CLAUDE_MODEL') or 'claude-3-haiku-20240307'
-    GEMINI_MODEL = os.environ.get('GEMINI_MODEL') or 'gemini-pro'
+    GEMINI_MODEL = os.environ.get('GEMINI_MODEL') or 'gemini-1.5-pro'
     
     # Configurações da interface de chat
     MAX_HISTORY_LENGTH = 10  # Número de mensagens para manter no histórico

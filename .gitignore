@@ -19,3 +19,5 @@ data/uploads/
 data/ipof_html/
 utils/__pycache__/
 data/siafic_exports/
+data/models/
+data/embeddings/
