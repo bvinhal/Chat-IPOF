@@ -21,3 +21,4 @@ utils/__pycache__/
 data/siafic_exports/
 data/models/
 data/embeddings/
+models/__pycache__/gemini_model.cpython-310.pyc

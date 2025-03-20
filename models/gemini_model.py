@@ -1,6 +1,12 @@
 import os
+import numpy as np
 from typing import List, Dict, Any, Optional
 import glob
+import pickle
+import json
+import shutil
+from datetime import datetime
+
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
@@ -35,6 +41,7 @@ class GeminiModel(AIModel):
         self.api_key = active_config.GEMINI_API_KEY
         self.llm = None
         self.chain = None
+        self.original_documents = None  # Armazena os documentos originais para facilitar reconstrução
     
     def initialize(self) -> bool:
         """
@@ -98,6 +105,9 @@ class GeminiModel(AIModel):
                 self.logger.error("Nenhum documento encontrado para treinamento")
                 return False
             
+            # Armazena os documentos originais para uso futuro
+            self.original_documents = documents
+            
             # Divide documentos em chunks
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000,
@@ -106,7 +116,7 @@ class GeminiModel(AIModel):
             )
             chunks = text_splitter.split_documents(documents)
             
-            # Inicializa embeddings (Gemini não tem embeddings próprios, usamos HuggingFace)
+            # Inicializa embeddings
             self.logger.info("Inicializando embeddings...")
             embeddings = HuggingFaceEmbeddings(
                 model_name="sentence-transformers/all-MiniLM-L6-v2",
@@ -211,6 +221,67 @@ class GeminiModel(AIModel):
             self.logger.error(f"Erro ao gerar resposta: {str(e)}")
             return f"Desculpe, ocorreu um erro ao processar sua pergunta: {str(e)}"
 
+    def save_model(self, model_name: str = None) -> bool:
+        """
+        Salva o modelo treinado para uso posterior.
+        
+        Args:
+            model_name: Nome para salvar o modelo (opcional)
+            
+        Returns:
+            bool: True se o salvamento foi bem-sucedido, False caso contrário
+        """
+        if not self.is_trained or self.vectorstore is None:
+            self.logger.error("Tentativa de salvar modelo não treinado")
+            return False
+        
+        try:
+            if model_name is None:
+                model_name = f"{self.__class__.__name__}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            # Cria o diretório do modelo se não existir
+            model_dir = os.path.join(active_config.MODELS_DIR, model_name)
+            os.makedirs(model_dir, exist_ok=True)
+            
+            # 1. Salvar o vectorstore usando o método save_local do FAISS
+            self.logger.info(f"Salvando vectorstore em {model_dir}")
+            index_path = os.path.join(model_dir, "index.faiss")
+            self.vectorstore.save_local(model_dir)
+            
+            # 2. Salvar os documentos originais
+            if self.original_documents:
+                self.logger.info("Salvando documentos originais")
+                docs_path = os.path.join(model_dir, "original_documents.pkl")
+                with open(docs_path, 'wb') as f:
+                    pickle.dump(self.original_documents, f)
+            
+            # 3. Salvar metadados
+            metadata_path = os.path.join(model_dir, "metadata.pkl")
+            metadata = {
+                'model_name': self.model_name,
+                'model_type': self.__class__.__name__,
+                'is_trained': self.is_trained,
+                'saved_at': datetime.now().isoformat(),
+                'embedding_model': "sentence-transformers/all-MiniLM-L6-v2",
+                'version': 2  # Versão do formato de salvamento
+            }
+            with open(metadata_path, 'wb') as f:
+                pickle.dump(metadata, f)
+            
+            # 4. Salvar também uma versão em JSON para fácil leitura humana
+            metadata_json_path = os.path.join(model_dir, "metadata.json")
+            with open(metadata_json_path, 'w', encoding='utf-8') as f:
+                # Convertemos datetime para string para poder serializar para JSON
+                json_metadata = {k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in metadata.items()}
+                json.dump(json_metadata, f, ensure_ascii=False, indent=2)
+            
+            self.model_path = model_dir
+            self.logger.info(f"Modelo salvo com sucesso em {model_dir}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Erro ao salvar modelo: {str(e)}")
+            return False
+    
     def load_model(self, model_path: str) -> bool:
         """
         Carrega um modelo treinado anteriormente.
@@ -221,31 +292,98 @@ class GeminiModel(AIModel):
         Returns:
             bool: True se o carregamento foi bem-sucedido, False caso contrário
         """
-        # Primeiro, chama o método load_model da classe pai (AIModel)
-        if not super().load_model(model_path):
-            return False
-        
         try:
-            # Inicializa o modelo se ainda não estiver inicializado
+            # Verifica se o diretório existe
+            if not os.path.exists(model_path):
+                self.logger.error(f"Caminho do modelo não existe: {model_path}")
+                return False
+            
+            # Carrega metadados
+            metadata_path = os.path.join(model_path, "metadata.pkl")
+            if not os.path.exists(metadata_path):
+                self.logger.error(f"Arquivo de metadados não encontrado: {metadata_path}")
+                return False
+                
+            with open(metadata_path, 'rb') as f:
+                metadata = pickle.load(f)
+            
+            # Verifica se o tipo de modelo é compatível
+            if metadata['model_type'] != self.__class__.__name__:
+                self.logger.error(f"Tipo de modelo incompatível: {metadata['model_type']}")
+                return False
+            
+            # Inicializa o modelo de linguagem Gemini
             if self.llm is None and not self.initialize():
                 self.logger.error("Falha ao inicializar o modelo Gemini")
                 return False
             
-            # Recria a cadeia de processamento usando o vectorstore carregado
-            if self.vectorstore is not None:
-                self.chain = ConversationalRetrievalChain.from_llm(
-                    llm=self.llm,
-                    retriever=self.vectorstore.as_retriever(
-                        search_kwargs={"k": 5}
-                    ),
-                    return_source_documents=True,
-                    verbose=True
+            # Inicializa embeddings
+            embeddings = HuggingFaceEmbeddings(
+                model_name="sentence-transformers/all-MiniLM-L6-v2",
+                model_kwargs={'device': 'cpu'}
+            )
+            
+            # Verifica se existe arquivos index.faiss e index.pkl (formato padrão do FAISS.save_local)
+            index_faiss_path = os.path.join(model_path, "index.faiss")
+            index_pkl_path = os.path.join(model_path, "index.pkl")
+            
+            if os.path.exists(index_faiss_path) and os.path.exists(index_pkl_path):
+                # Carrega o vectorstore usando FAISS.load_local
+                self.logger.info("Carregando vectorstore usando FAISS.load_local")
+                self.vectorstore = FAISS.load_local(
+                    model_path, 
+                    embeddings,
+                    allow_dangerous_deserialization=True
                 )
-                self.logger.info("Chain recriada com sucesso para o modelo Gemini")
-                return True
+                self.logger.info("Vectorstore carregado com sucesso")
             else:
-                self.logger.error("Vectorstore não foi carregado corretamente")
-                return False
+                # Verifica se temos os documentos originais para reconstruir o vectorstore
+                docs_path = os.path.join(model_path, "original_documents.pkl")
+                if os.path.exists(docs_path):
+                    self.logger.info("Reconstruindo vectorstore a partir dos documentos originais")
+                    try:
+                        # Carrega os documentos originais
+                        with open(docs_path, 'rb') as f:
+                            documents = pickle.load(f)
+                        
+                        # Divide documentos em chunks
+                        text_splitter = RecursiveCharacterTextSplitter(
+                            chunk_size=1000,
+                            chunk_overlap=200,
+                            length_function=len,
+                        )
+                        chunks = text_splitter.split_documents(documents)
+                        
+                        # Recria o vectorstore
+                        self.vectorstore = FAISS.from_documents(chunks, embeddings)
+                        self.logger.info("Vectorstore reconstruído com sucesso")
+                        
+                        # Armazena os documentos originais
+                        self.original_documents = documents
+                    except Exception as e:
+                        self.logger.error(f"Erro ao reconstruir vectorstore: {str(e)}")
+                        return False
+                else:
+                    self.logger.error("Não foi possível encontrar os arquivos necessários para carregar o modelo")
+                    return False
+            
+            # Recria a cadeia de retrieval
+            self.chain = ConversationalRetrievalChain.from_llm(
+                llm=self.llm,
+                retriever=self.vectorstore.as_retriever(
+                    search_kwargs={"k": 5}
+                ),
+                return_source_documents=True,
+                verbose=True
+            )
+            
+            # Atualiza propriedades do modelo
+            self.model_name = metadata['model_name']
+            self.is_trained = metadata.get('is_trained', True)
+            self.model_path = model_path
+            
+            self.logger.info(f"Modelo carregado com sucesso de {model_path}")
+            return True
         except Exception as e:
-            self.logger.error(f"Erro ao recriar chain para o modelo Gemini: {str(e)}")
+            self.logger.error(f"Erro ao carregar modelo: {str(e)}")
             return False
