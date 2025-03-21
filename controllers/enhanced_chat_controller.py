@@ -18,16 +18,22 @@ class EnhancedChatController(ChatController):
     """
     Controlador de chat aprimorado que adiciona classificação de natureza de despesa.
     """
-    
     def __init__(self):
         """Inicializa o controlador de chat aprimorado."""
         super().__init__()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
-        # Inicializa o manipulador de natureza de despesa
-        # Usamos o mesmo provedor de IA que está configurado como padrão
-        self.natureza_handler = ChatNaturezaHandler(active_config.DEFAULT_MODEL)
-    
+        # Inicializa o manipulador de natureza de despesa com o modelo atual
+        self.natureza_handler = ChatNaturezaHandler(self.current_model_type)
+        self.logger.info(f"Manipulador de natureza inicializado com provedor {self.current_model_type}")
+
+    def update_natureza_handler(self):
+        """Atualiza o manipulador de natureza quando o modelo é alterado."""
+        if hasattr(self, 'natureza_handler'):
+            previous_provider = self.natureza_handler.integrator.embedding_provider
+            self.natureza_handler = ChatNaturezaHandler(self.current_model_type)
+            self.logger.info(f"Manipulador de natureza atualizado de {previous_provider} para {self.current_model_type}")
+            
     def process_message(self, message: str, chat_history: List[Dict[str, str]] = None) -> str:
         """
         Processa uma mensagem do usuário com classificação de natureza de despesa.

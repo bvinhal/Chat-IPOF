@@ -25,6 +25,7 @@ class NaturezaIntegrator:
         Args:
             embedding_provider: Provedor de embeddings a usar ('openai', 'claude', 'gemini')
         """
+        self.embedding_provider = embedding_provider  # Adicionar esta linha para expor o atributo
         self.classifier = NaturezaClassifier(embedding_provider)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         

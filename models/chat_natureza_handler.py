@@ -30,21 +30,13 @@ class ChatNaturezaHandler:
     def enhance_response(self, query: str, ai_model, original_response: str) -> str:
         """
         Aprimora a resposta do chat com informações de natureza de despesa quando relevante.
-        
-        Args:
-            query: Consulta original do usuário
-            ai_model: Modelo de IA atual
-            original_response: Resposta original gerada pelo modelo
-            
-        Returns:
-            str: Resposta aprimorada com informações de natureza (se relevante)
         """
         # Verifica se a consulta parece ser sobre natureza de despesa
         if not self.integrator.is_natureza_query(query):
             return original_response
         
         try:
-            # Processa a consulta com o integrador
+            # Processa a consulta com o integrador, passando o modelo atual para validação
             result = self.integrator.process_query(query, ai_model)
             
             # Se não houver previsões, retorna a resposta original

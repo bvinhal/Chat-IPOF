@@ -99,12 +99,6 @@ class ChatController:
     def change_model(self, model_type: str) -> Dict[str, Any]:
         """
         Altera o modelo atual para o tipo especificado.
-        
-        Args:
-            model_type: Tipo do modelo ('claude', 'openai', 'gemini')
-            
-        Returns:
-            Dict[str, Any]: Resultado da operação
         """
         if model_type.lower() == self.current_model_type.lower() and self.current_model is not None:
             return {
@@ -114,6 +108,10 @@ class ChatController:
         
         # Tenta carregar o novo modelo
         if self._load_model(model_type):
+            # Se a classe derivada implementa update_natureza_handler, chama o método
+            if hasattr(self, 'update_natureza_handler'):
+                self.update_natureza_handler()
+                
             return {
                 'success': True, 
                 'message': f"Modelo alterado com sucesso para {model_type}"

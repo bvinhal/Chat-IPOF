@@ -33,6 +33,18 @@ class EnhancedIPOFChatController(EnhancedChatController):
         self.temp_dir = os.path.join(active_config.DATA_DIR, 'temp')
         os.makedirs(self.temp_dir, exist_ok=True)
     
+    def change_model(self, model_type: str) -> Dict[str, Any]:
+        """
+        Sobrescreve o método para garantir que o manipulador de natureza seja atualizado.
+        """
+        result = super().change_model(model_type)
+        
+        # Se houve sucesso, atualiza o manipulador de natureza
+        if result.get('success', False):
+            self.update_natureza_handler()
+            
+        return result
+        
     def process_message(self, message: str, chat_history: List[Dict[str, str]] = None) -> str:
         """
         Processa uma mensagem do usuário com suporte a IPOF.
