@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 class EnhancedIPOFChatController(EnhancedChatController):
     """
     Controlador de chat aprimorado com suporte a IPOF.
+    Mantém a compatibilidade com o novo fluxo invertido de natureza de despesa.
     """
     
     def __init__(self):
@@ -48,6 +49,7 @@ class EnhancedIPOFChatController(EnhancedChatController):
     def process_message(self, message: str, chat_history: List[Dict[str, str]] = None) -> str:
         """
         Processa uma mensagem do usuário com suporte a IPOF.
+        Este método prioriza o controlador IPOF sobre o fluxo de natureza de despesa.
         
         Args:
             message: Mensagem do usuário
@@ -76,7 +78,8 @@ class EnhancedIPOFChatController(EnhancedChatController):
                 # Inicia a criação de um IPOF
                 return self.ipof_controller.iniciar_criacao_ipof()
             
-            # Se não está relacionado a IPOF, processa normalmente
+            # Se não está relacionado a IPOF, processa usando o fluxo padrão
+            # do controlador EnhancedChatController (com fluxo invertido de natureza)
             return super().process_message(message, chat_history)
             
         except Exception as e:
@@ -89,6 +92,7 @@ class EnhancedIPOFChatController(EnhancedChatController):
     def process_file(self, file_path: str, file_type: str, message: str = "", chat_history: List[Dict[str, str]] = None) -> str:
         """
         Processa um arquivo enviado pelo usuário.
+        Não foram necessárias alterações neste método para o novo fluxo.
         
         Args:
             file_path: Caminho para o arquivo

@@ -29,7 +29,11 @@ class ChatNaturezaHandler:
     
     def enhance_response(self, query: str, ai_model, original_response: str) -> str:
         """
-        Aprimora a resposta do chat com informações de natureza de despesa quando relevante.
+        Método mantido para compatibilidade, mas não mais utilizado no fluxo principal.
+        A lógica foi transferida para o controlador EnhancedChatController.
+        
+        Este método é mantido para evitar quebrar chamadas existentes e para uso em
+        outros controladores que ainda não foram adaptados para o novo fluxo.
         """
         # Verifica se a consulta parece ser sobre natureza de despesa
         if not self.integrator.is_natureza_query(query):
@@ -56,6 +60,7 @@ class ChatNaturezaHandler:
     def _format_enhanced_response(self, original_response: str, natureza_result: Dict[str, Any]) -> str:
         """
         Formata uma resposta aprimorada com informações de natureza.
+        Mantido para compatibilidade com o fluxo anterior.
         
         Args:
             original_response: Resposta original do modelo

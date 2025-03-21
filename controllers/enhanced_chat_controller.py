@@ -34,9 +34,47 @@ class EnhancedChatController(ChatController):
             self.natureza_handler = ChatNaturezaHandler(self.current_model_type)
             self.logger.info(f"Manipulador de natureza atualizado de {previous_provider} para {self.current_model_type}")
             
+    def _format_response_with_natureza(self, original_response: str, natureza_result: Dict[str, Any]) -> str:
+        """
+        Formata a resposta para incluir a seção de classificação de natureza.
+        Replica a formatação original do ChatNaturezaHandler.
+        
+        Args:
+            original_response: Resposta original do modelo
+            natureza_result: Resultado do processamento de natureza
+            
+        Returns:
+            str: Resposta formatada com seção de natureza
+        """
+        predictions = natureza_result['predictions']
+        recommended = natureza_result.get('recommended', predictions[0] if predictions else None)
+        
+        # Adiciona o separador e o título da seção
+        formatted_response = original_response + "\n\n---\n\n"
+        formatted_response += "**Classificação de Natureza de Despesa:**\n\n"
+        
+        if recommended:
+            formatted_response += (
+                f"Com base na sua consulta, a natureza de despesa mais adequada parece ser:\n\n"
+                f"**{recommended['codigo']} - {recommended['nome']}**\n"
+                f"(Confiança: {recommended['confianca']:.2%})\n\n"
+            )
+        
+        if len(predictions) > 1:
+            formatted_response += "Outras possíveis classificações de natureza de despesa incluem:\n\n"
+            
+            for i, pred in enumerate(predictions[1:], 2):
+                formatted_response += f"{i}. **{pred['codigo']} - {pred['nome']}**\n"
+                formatted_response += f"   Confiança: {pred['confianca']:.2%}\n"
+            
+            formatted_response += "\nEssas classificações são baseadas na análise do texto fornecido e podem precisar de validação adicional dependendo do contexto específico da despesa."
+        
+        return formatted_response
+            
     def process_message(self, message: str, chat_history: List[Dict[str, str]] = None) -> str:
         """
         Processa uma mensagem do usuário com classificação de natureza de despesa.
+        Fluxo invertido: primeiro analisa com o classificador de natureza, depois consulta o modelo geral.
         
         Args:
             message: Mensagem do usuário
@@ -55,17 +93,31 @@ class EnhancedChatController(ChatController):
             )
         
         try:
-            # Primeiro, obtém a resposta original do modelo de IA
-            original_response = super().process_message(message, chat_history)
+            # Verifica se a consulta parece ser sobre natureza de despesa
+            is_natureza_query = self.natureza_handler.integrator.is_natureza_query(message)
             
-            # Em seguida, aprimora a resposta com informações de natureza de despesa
-            enhanced_response = self.natureza_handler.enhance_response(
-                message, 
-                self.current_model, 
-                original_response
-            )
+            if is_natureza_query:
+                # 1. Primeira etapa: Consulta o classificador especializado
+                natureza_result = self.natureza_handler.integrator.process_query(message)
+                
+                # Se temos previsões, incorporamos essa informação na consulta ao modelo geral
+                if natureza_result['predictions']:
+                    # Prepara a consulta enriquecida para o modelo geral
+                    enhanced_query = self._prepare_enhanced_query(message, natureza_result)
+                    
+                    # 2. Segunda etapa: Consulta o modelo geral com a consulta enriquecida
+                    response = super().process_message(enhanced_query, chat_history)
+                    
+                    # Verifica se a resposta já contém a seção formatada
+                    if '---' not in response and '**Classificação de Natureza de Despesa:**' not in response:
+                        # Se não tiver, adiciona a formatação manualmente
+                        response = self._format_response_with_natureza(response, natureza_result)
+                    
+                    return response
             
-            return enhanced_response
+            # Se não for uma consulta de natureza ou não houver previsões,
+            # processa normalmente com o modelo geral
+            return super().process_message(message, chat_history)
             
         except Exception as e:
             self.logger.error(f"Erro ao processar mensagem aprimorada: {str(e)}")
@@ -73,3 +125,54 @@ class EnhancedChatController(ChatController):
                 "Desculpe, ocorreu um erro ao processar sua pergunta. "
                 f"Detalhes do erro: {str(e)}"
             )
+    
+    def _prepare_enhanced_query(self, original_query: str, natureza_result: Dict[str, Any]) -> str:
+        """
+        Prepara uma consulta enriquecida com os resultados do classificador de natureza.
+        
+        Args:
+            original_query: Consulta original do usuário
+            natureza_result: Resultado do processamento de natureza
+            
+        Returns:
+            str: Consulta enriquecida para enviar ao modelo geral
+        """
+        predictions = natureza_result['predictions']
+        recommended = natureza_result.get('recommended', predictions[0] if predictions else None)
+        
+        enhanced_query = (
+            f"O usuário perguntou: '{original_query}'\n\n"
+            f"Após análise com o classificador especializado, encontrei as seguintes possíveis "
+            f"naturezas de despesa:\n\n"
+        )
+        
+        # Adiciona a natureza recomendada
+        if recommended:
+            enhanced_query += (
+                f"Natureza mais provável: {recommended['codigo']} - {recommended['nome']}\n"
+                f"Confiança: {recommended['confianca']:.2%}\n"
+                f"Referência: {recommended['texto_referencia']}\n\n"
+            )
+        
+        # Adiciona outras naturezas sugeridas
+        if len(predictions) > 1:
+            enhanced_query += "Outras naturezas possíveis:\n"
+            for i, pred in enumerate(predictions[1:], 1):
+                enhanced_query += (
+                    f"{i}. {pred['codigo']} - {pred['nome']} "
+                    f"(Confiança: {pred['confianca']:.2%})\n"
+                )
+            enhanced_query += "\n"
+        
+        enhanced_query += (
+            "Por favor, responda à consulta do usuário sobre natureza de despesa, "
+            "levando em consideração estas informações do classificador. "
+            "Explique qual é a natureza mais apropriada e por quê, ou sugira uma alternativa "
+            "se nenhuma das naturezas identificadas for adequada.\n\n"
+            "IMPORTANTE: Formate sua resposta de modo que primeiro venha sua explicação normal, "
+            "e somente no final adicione um separador '---' seguido por uma seção intitulada "
+            "'**Classificação de Natureza de Despesa:**' contendo suas recomendações. "
+            "Essa formatação deve ser idêntica ao formato usado anteriormente pelo sistema."
+        )
+        
+        return enhanced_query
