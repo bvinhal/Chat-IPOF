@@ -22,3 +22,4 @@ data/siafic_exports/
 data/models/
 data/embeddings/
 models/__pycache__/gemini_model.cpython-310.pyc
+models/__pycache__/claude_model.cpython-310.pyc
