@@ -157,6 +157,9 @@ class IPOF:
             
             # Adiciona a parcela
             self.adicionar_parcela(parcela)
+            
+        # Extrai a unidade orçamentária da dotação fornecida
+        self.extrair_unidade_orcamentaria(dotacao_orcamentaria)
     
     def extrair_unidade_orcamentaria(self, dotacao_orcamentaria: str) -> None:
         """

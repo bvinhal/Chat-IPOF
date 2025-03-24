@@ -197,23 +197,25 @@ class IPOFController:
             # Inicializa o cliente OpenAI
             client = OpenAI(api_key=active_config.OPENAI_API_KEY)
             
-            # Cria um prompt para resumir o texto
+            # Extrai valor e meses do texto original usando os métodos específicos
+            valor_identificado = extract_valor_monetario(texto)
+            meses_identificados = extract_meses(texto)
+            
+            # Cria um prompt para resumir o texto que seja fiel ao conteúdo original
             prompt = (
-                    f"Resuma este arquivo destacando os itens mais importantes. Procure informações como objeto da contratação "
-                    f"para integrae o resumo, sendo esta informação a primeira que deve aparecer na resposta. Dentre estes itens, "
-                    f"tente encontrar valores monetário globais que possamos entender e periodos de tempo que nos permita encontrar "
-                    f"um padrão de quantidade de meses. Seja criado mais duas linhas sendo uma contendo o valor total identficado e "
-                    f"a outra o tempo de validade do contrato ou coisa parecida. Este padrão deverá ser Valor total da despesa: R$ e "
-                    f"Quantidade de meses previstos: . Caso não encontrem tais informações, deverá ser informado não encontrado no "
-                    f"lugar dos valores. No resumo não coloque caracteres especiais como * para serparar os principais itens pedidos "
-                    f"que foram encontrados :\n\n{texto}"
+                f"Resuma este texto destacando o objeto principal da contratação e outras informações relevantes. "
+                f"IMPORTANTE: Não infira, crie ou adicione informações que não estejam presentes no texto original. "
+                f"Especialmente, não mencione valores monetários ou períodos de tempo a menos que estejam explicitamente "
+                f"mencionados no texto. O resumo deve ser factual e baseado apenas no que está explicitamente contido "
+                f"no texto original.\n\n"
+                f"Texto original:\n{texto}"
             )
             
-            # Chama a API da OpenAI para resumir o texto usando GPT-3.5 Turbo
+            # Chama a API da OpenAI para resumir o texto
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo", #gpt-4-turbo
+                model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "Você é um especialista em finanças públicas e orçamento governamental."},
+                    {"role": "system", "content": "Você é um especialista em resumir documentos de contratação pública de forma precisa e factual, sem adicionar informações que não estejam presentes no texto original."},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=1000,
@@ -223,16 +225,22 @@ class IPOFController:
             # Extrai o resumo da resposta
             resumo = response.choices[0].message.content.strip()
             
-            # Limita o resumo a 500 caracteres
-            if len(resumo) > 500:
-                resumo = resumo[:497] + "..."
+            # Formata o resumo para incluir informações sobre valor e meses apenas se foram realmente encontrados
+            resumo_formatado = resumo
             
-            # Extrai valor e meses do texto original
-            valor_identificado = extract_valor_monetario(texto)
-            meses_identificados = extract_meses(texto)
+            # Adiciona informações sobre valor e meses ao final do resumo, apenas se foram encontrados
+            if valor_identificado:
+                resumo_formatado += f"\n\nValor total da despesa: R$ {valor_identificado:.2f}"
+            else:
+                resumo_formatado += "\n\nValor total da despesa: Não encontrado no texto"
+                
+            if meses_identificados:
+                resumo_formatado += f"\n\nQuantidade de meses previstos: {meses_identificados}"
+            else:
+                resumo_formatado += "\n\nQuantidade de meses previstos: Não encontrado no texto"
             
             return {
-                'resumo': resumo,
+                'resumo': resumo_formatado,
                 'valor_identificado': valor_identificado,
                 'meses_identificados': meses_identificados
             }
@@ -246,7 +254,7 @@ class IPOFController:
                 'valor_identificado': extract_valor_monetario(texto),
                 'meses_identificados': extract_meses(texto)
             }
-                
+                                    
     def _processar_descricao(self, conteudo: str, ai_model=None, fonte: str = "mensagem") -> str:
         """
         Processa a descrição da despesa.
@@ -268,6 +276,13 @@ class IPOFController:
         # Armazena o resumo
         self.dados_temp['descricao'] = resumo
         
+        # Armazena valor e meses identificados, se houver
+        if valor_identificado:
+            self.dados_temp['valor_total'] = valor_identificado
+        
+        if meses_identificados:
+            self.dados_temp['quantidade_meses'] = meses_identificados
+        
         # Classifica a natureza de despesa
         sugestoes_natureza = []
         try:
@@ -281,23 +296,10 @@ class IPOFController:
         
         # Monta resposta para o usuário
         fonte_msg = "o arquivo fornecido" if fonte == "arquivo" else "sua descrição"
+        
+        # Apenas mostra o resumo extraído do arquivo/mensagem, sem duplicar as informações
+        # de valor e meses que já estão incluídas no resumo
         resposta = f"Resumo da descrição extraída de {fonte_msg}:\n\n{resumo}\n\n"
-        
-        # Informações sobre o valor
-        if valor_identificado:
-            resposta += f"Valor total da despesa: R$ {valor_identificado:.2f}\n"
-            self.dados_temp['valor_total'] = valor_identificado
-        else:
-            resposta += "Valor total da despesa: Não encontrado\n"
-        
-        # Informações sobre o período
-        if meses_identificados:
-            resposta += f"Quantidade de meses previstos: {meses_identificados}\n"
-            self.dados_temp['quantidade_meses'] = meses_identificados
-        else:
-            resposta += "Quantidade de meses previstos: Não encontrado\n"
-        
-        resposta += "\n"
         
         # Avança para o próximo estado (natureza)
         self.estado_atual = self.ESTADOS['NATUREZA']

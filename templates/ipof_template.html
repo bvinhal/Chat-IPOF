@@ -315,6 +315,7 @@
                             <th>Nº</th>
                             <th>Data de Referência</th>
                             <th>Data de Desembolso</th>
+                            <th>Dotação Orçamentária</th>
                             <th>Natureza de Despesa</th>
                             <th>Valor da Parcela</th>
                         </tr>
@@ -325,6 +326,7 @@
                             <td>{{ index + 1 }}</td>
                             <td>{{ parcela.data_referencia }}</td>
                             <td>{{ parcela.data_desembolso }}</td>
+                            <td>{{ parcela.dotacao_orcamentaria }}</td>
                             <td>{{ parcela.natureza_despesa }}</td>
                             <td>R$ {{ "{:,.2f}".format(parcela.valor_parcela).replace(',', '.').replace('.', ',', 1) }}</td>
                         </tr>
