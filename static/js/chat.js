@@ -556,6 +556,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Função para iniciar nova conversa
+    // Modificação na função startNewConversation
     function startNewConversation() {
         // Verifica se o assistente está digitando
         if (isAssistantTyping) {
@@ -573,7 +574,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (chatMessages) {
             chatMessages.innerHTML = '';
             
-            // Adiciona mensagem de boas-vindas
+            // Adiciona apenas uma mensagem de boas-vindas
             addMessage(
                 'Olá! Sou o Assistente de Orçamento Público. Como posso ajudá-lo(a) hoje?',
                 'system'
@@ -618,6 +619,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Função para carregar histórico salvo
+    // Modificação na função loadSavedHistory do arquivo static/js/chat.js
     function loadSavedHistory() {
         try {
             const savedHistory = localStorage.getItem(`chat_history_${currentConversationId}`);
@@ -653,7 +655,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (e) {
             console.warn('Falha ao carregar histórico do localStorage:', e);
             
-            // Adiciona mensagem de boas-vindas
+            // Se não conseguiu carregar histórico, adiciona mensagem de boas-vindas
             addMessage(
                 'Olá! Sou o Assistente de Orçamento Público. Como posso ajudá-lo(a) hoje?',
                 'system'
@@ -808,6 +810,10 @@ document.addEventListener('DOMContentLoaded', function() {
     loadCurrentModel();
     
     console.log("Iniciando carregamento do histórico");
+    // Removendo qualquer mensagem que possa ter sido adicionada antes disso
+    if (chatMessages) {
+        chatMessages.innerHTML = '';
+    }
     loadSavedHistory();
     
     // Adicionar estilo CSS para o botão de upload
