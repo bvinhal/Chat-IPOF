@@ -5,6 +5,7 @@ import logging
 from typing import List, Dict, Any
 from controllers.chat_controller import ChatController
 from models.chat_natureza_handler import ChatNaturezaHandler
+from controllers.natureza_evaluator_controller import NaturezaEvaluatorController
 from config import active_config
 
 # Configuração de logging
@@ -26,6 +27,10 @@ class EnhancedChatController(ChatController):
         # Inicializa o manipulador de natureza de despesa com o modelo atual
         self.natureza_handler = ChatNaturezaHandler(self.current_model_type)
         self.logger.info(f"Manipulador de natureza inicializado com provedor {self.current_model_type}")
+        
+        # Inicializa o controlador de avaliação de natureza
+        self.natureza_evaluator_controller = NaturezaEvaluatorController()
+        self.logger.info(f"Controlador de avaliação de natureza inicializado")
 
     def update_natureza_handler(self):
         """Atualiza o manipulador de natureza quando o modelo é alterado."""
@@ -33,7 +38,43 @@ class EnhancedChatController(ChatController):
             previous_provider = self.natureza_handler.integrator.embedding_provider
             self.natureza_handler = ChatNaturezaHandler(self.current_model_type)
             self.logger.info(f"Manipulador de natureza atualizado de {previous_provider} para {self.current_model_type}")
+        
+        # Atualiza também o avaliador de natureza
+        if hasattr(self, 'natureza_evaluator_controller'):
+            self.natureza_evaluator_controller.change_provider(self.current_model_type)
+            self.logger.info(f"Avaliador de natureza atualizado para {self.current_model_type}")
+
+    def change_model(self, model_type: str) -> Dict[str, Any]:
+        """
+        Altera o modelo atual para o tipo especificado e atualiza os componentes relacionados.
+        """
+        result = super().change_model(model_type)
+        
+        # Se houve sucesso, atualiza o manipulador de natureza e o avaliador
+        if result.get('success', False):
+            self.update_natureza_handler()
+                
+        return result
+
+    def evaluate_natureza(self, descricao: str, natureza_codigo: str) -> Dict[str, Any]:
+        """
+        Avalia se uma natureza de despesa é adequada para uma descrição.
+        
+        Args:
+            descricao: Descrição da despesa
+            natureza_codigo: Código da natureza a ser avaliada
             
+        Returns:
+            Dict[str, Any]: Resultado da avaliação
+        """
+        if not hasattr(self, 'natureza_evaluator_controller') or self.natureza_evaluator_controller is None:
+            return {
+                'success': False,
+                'message': "Avaliador de natureza não disponível"
+            }
+        
+        return self.natureza_evaluator_controller.evaluate_natureza(descricao, natureza_codigo)
+        
     def _format_response_with_natureza(self, original_response: str, natureza_result: Dict[str, Any]) -> str:
         """
         Formata a resposta para incluir a seção de classificação de natureza.

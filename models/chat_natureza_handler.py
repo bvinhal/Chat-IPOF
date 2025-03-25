@@ -4,6 +4,7 @@ import logging
 from typing import Dict, List, Any, Optional
 from config import active_config
 from models.natureza_integrator import NaturezaIntegrator
+from models.natureza_evaluator_integration import NaturezaEvaluatorIntegration
 
 # Configuração de logging
 logging.basicConfig(
@@ -25,15 +26,13 @@ class ChatNaturezaHandler:
             embedding_provider: Provedor de embeddings a usar
         """
         self.integrator = NaturezaIntegrator(embedding_provider)
+        # Adiciona o integrador de avaliação
+        self.evaluator_integration = NaturezaEvaluatorIntegration(embedding_provider)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
     
     def enhance_response(self, query: str, ai_model, original_response: str) -> str:
         """
-        Método mantido para compatibilidade, mas não mais utilizado no fluxo principal.
-        A lógica foi transferida para o controlador EnhancedChatController.
-        
-        Este método é mantido para evitar quebrar chamadas existentes e para uso em
-        outros controladores que ainda não foram adaptados para o novo fluxo.
+        Método mantido para compatibilidade, mas agora aproveita o avaliador de natureza.
         """
         # Verifica se a consulta parece ser sobre natureza de despesa
         if not self.integrator.is_natureza_query(query):
@@ -41,16 +40,24 @@ class ChatNaturezaHandler:
         
         try:
             # Processa a consulta com o integrador, passando o modelo atual para validação
-            result = self.integrator.process_query(query, ai_model)
+            integrator_result = self.integrator.process_query(query, ai_model)
             
-            # Se não houver previsões, retorna a resposta original
-            if not result['predictions']:
+            # Processa com o avaliador de natureza integrado
+            evaluator_result = self.evaluator_integration.process_message(query)
+            
+            # Decide qual resposta usar com base nos resultados
+            if evaluator_result.get('has_classifications', False) and evaluator_result.get('evaluation'):
+                # Se temos classificação e avaliação, usa a resposta do avaliador integrado
+                enhanced = original_response + "\n\n---\n\n"
+                enhanced += self.evaluator_integration.format_response(evaluator_result)
+                return enhanced
+            elif integrator_result.get('predictions'):
+                # Se não temos avaliação mas temos previsões do integrador, usa o método original
+                enhanced = self._format_enhanced_response(original_response, integrator_result)
+                return enhanced
+            else:
+                # Nenhum resultado válido, retorna a resposta original
                 return original_response
-            
-            # Constrói uma resposta aprimorada que incorpora as previsões de natureza
-            enhanced_response = self._format_enhanced_response(original_response, result)
-            
-            return enhanced_response
             
         except Exception as e:
             self.logger.error(f"Erro ao aprimorar resposta: {str(e)}")

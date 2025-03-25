@@ -1,4 +1,3 @@
-<!-- templates/admin.html -->
 {% extends "base.html" %}
 
 {% block title %}Administração - Assistente de Orçamento Público{% endblock %}
@@ -11,6 +10,7 @@
         <div class="admin-tabs">
             <button class="tab-button active" data-tab="model-training">Treinamento de Modelos</button>
             <button class="tab-button" data-tab="natureza-training">Classificador de Natureza</button>
+            <button class="tab-button" data-tab="natureza-evaluator">Avaliador de Natureza</button>
             <button class="tab-button" data-tab="manage-models">Gerenciar Modelos</button>
         </div>
         
@@ -85,6 +85,48 @@
             </div>
         </div>
         
+        <!-- Tab: Treinamento de avaliador de natureza -->
+        <div class="tab-content" id="natureza-evaluator">
+            <h3>Treinamento do Avaliador de Natureza de Despesa</h3>
+            <p>
+                Este treinamento processa o Manual de Contabilidade Aplicada ao Setor Público (MCASP) 
+                para criar um avaliador que verifica se uma natureza de despesa é adequada para uma determinada descrição.
+            </p>
+            
+            <form id="trainEvaluatorForm">
+                <div class="form-group">
+                    <label for="evaluatorProvider">Provedor de Embeddings:</label>
+                    <select id="evaluatorProvider" name="evaluatorProvider" required>
+                        <option value="openai">OpenAI</option>
+                        <option value="claude">Claude (usando Sentence Transformers)</option>
+                        <option value="gemini">Gemini</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="mcaspFile">Arquivo PDF do MCASP (opcional):</label>
+                    <input type="file" id="mcaspFile" name="mcaspFile" accept=".pdf">
+                    <small>Se nenhum arquivo for fornecido, usará o MCASP na pasta de treinamento</small>
+                </div>
+                
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="forceRebuildEvaluator" name="forceRebuildEvaluator">
+                        Forçar recriação dos embeddings (mais demorado)
+                    </label>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="primary-button">Iniciar Treinamento</button>
+                </div>
+            </form>
+            
+            <div id="evaluatorTrainingStatus" class="status-container hidden">
+                <div class="spinner"></div>
+                <p>Treinamento do avaliador em andamento. Isso pode levar alguns minutos...</p>
+            </div>
+        </div>
+        
         <!-- Tab: Gerenciar modelos -->
         <div class="tab-content" id="manage-models">
             <h3>Gerenciar Modelos</h3>
@@ -102,6 +144,14 @@
                 <div id="naturezaModelsList" class="models-list">
                     <div class="spinner"></div>
                     <p>Carregando classificadores disponíveis...</p>
+                </div>
+            </div>
+            
+            <div class="model-section">
+                <h4>Avaliadores de Natureza</h4>
+                <div id="evaluatorsList" class="models-list">
+                    <div class="spinner"></div>
+                    <p>Carregando avaliadores disponíveis...</p>
                 </div>
             </div>
         </div>

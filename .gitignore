@@ -26,3 +26,5 @@ models/__pycache__/claude_model.cpython-310.pyc
 controllers/__pycache__/chat_controller.cpython-310.pyc
 models/__pycache__/claude_model.cpython-310.pyc
 models/__pycache__/gemini_model.cpython-310.pyc
+controllers/__pycache__/chat_controller.cpython-310.pyc
+data/training/mcasp/

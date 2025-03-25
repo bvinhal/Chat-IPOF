@@ -20,6 +20,8 @@ from controllers.training_controller import TrainingController
 from models.natureza_classifier import NaturezaClassifier
 from models.ipof_model import IPOF, ParcelaIPOF
 from models.chat_natureza_handler import ChatNaturezaHandler
+from controllers.natureza_evaluator_controller import NaturezaEvaluatorController
+
 
 # Cria os diretórios necessários se não existirem
 os.makedirs(active_config.DATA_DIR, exist_ok=True)
@@ -39,6 +41,8 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Limita uploads a 16MB
 # Inicializa controladores
 chat_controller = EnhancedIPOFChatController()
 training_controller = TrainingController()
+natureza_evaluator_controller = NaturezaEvaluatorController()
+
 
 # Tipos de arquivos permitidos
 ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'txt'}
@@ -523,6 +527,119 @@ def clean_temp_files():
                 'message': f'Erro ao exportar IPOF: {str(e)}'
             }), 500
             
+    @app.route('/api/train-natureza-evaluator', methods=['POST'])
+    def train_natureza_evaluator():
+        """Endpoint para treinar o avaliador de natureza de despesa."""
+        data = request.json
+        provider = data.get('provider', active_config.DEFAULT_MODEL)
+        mcasp_path = data.get('mcasp_path')
+        force_rebuild = data.get('force_rebuild', False)
+        
+        # Treina o avaliador
+        result = natureza_evaluator_controller.train_evaluator(provider, mcasp_path, force_rebuild)
+        
+        # Retorna o resultado
+        if result.get('success', False):
+            return jsonify(result)
+        else:
+            return jsonify(result), 400
+
+    @app.route('/api/natureza-evaluators', methods=['GET'])
+    def get_natureza_evaluators():
+        """Endpoint para listar avaliadores de natureza disponíveis."""
+        evaluators = natureza_evaluator_controller.list_evaluators()
+        
+        return jsonify({
+            'success': True,
+            'evaluators': evaluators
+        })
+
+    @app.route('/api/delete-natureza-evaluator', methods=['POST'])
+    def delete_natureza_evaluator():
+        """Endpoint para excluir um avaliador de natureza."""
+        data = request.json
+        provider = data.get('provider')
+        
+        if not provider:
+            return jsonify({
+                'success': False,
+                'message': 'Provedor não especificado'
+            }), 400
+        
+        result = natureza_evaluator_controller.delete_evaluator(provider)
+        
+        if result.get('success', False):
+            return jsonify(result)
+        else:
+            return jsonify(result), 400
+
+    @app.route('/api/evaluate-natureza', methods=['POST'])
+    def evaluate_natureza():
+        """Endpoint para avaliar se uma natureza é adequada para uma descrição."""
+        data = request.json
+        descricao = data.get('descricao', '')
+        natureza_codigo = data.get('natureza_codigo', '')
+        
+        if not descricao or not natureza_codigo:
+            return jsonify({
+                'success': False,
+                'message': 'Descrição e código de natureza são obrigatórios'
+            }), 400
+        
+        # Usa o controlador de chat se disponível, caso contrário usa o controlador de avaliador
+        if hasattr(chat_controller, 'evaluate_natureza'):
+            result = chat_controller.evaluate_natureza(descricao, natureza_codigo)
+        else:
+            result = natureza_evaluator_controller.evaluate_natureza(descricao, natureza_codigo)
+        
+        if result.get('success', False):
+            return jsonify(result)
+        else:
+            return jsonify(result), 400
+            
+    @app.route('/api/upload-mcasp', methods=['POST'])
+    def upload_mcasp():
+        """Endpoint para upload de arquivo PDF do MCASP."""
+        if 'file' not in request.files:
+            return jsonify({
+                'success': False,
+                'message': 'Nenhum arquivo encontrado'
+            }), 400
+        
+        file = request.files['file']
+        
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'message': 'Nenhum arquivo selecionado'
+            }), 400
+        
+        if file and file.filename.endswith('.pdf'):
+            # Cria o diretório MCASP se não existir
+            mcasp_dir = os.path.join(active_config.TRAINING_DATA_DIR, 'mcasp')
+            os.makedirs(mcasp_dir, exist_ok=True)
+            
+            # Salva o arquivo
+            filename = 'mcasp.pdf'
+            file_path = os.path.join(mcasp_dir, filename)
+            file.save(file_path)
+            
+            return jsonify({
+                'success': True,
+                'message': 'Arquivo MCASP carregado com sucesso',
+                'file_path': file_path
+            })
+        
+        return jsonify({
+            'success': False,
+            'message': 'Formato de arquivo não suportado. Use .pdf'
+        }), 400
+        
+    @app.route('/natureza-evaluator-demo')
+    def natureza_evaluator_demo():
+        """Rota para a página de demonstração do avaliador de natureza."""
+        return render_template('natureza_evaluator_demo.html')
+        
 # Executa a limpeza a cada inicio da aplicação
 clean_temp_files()
 

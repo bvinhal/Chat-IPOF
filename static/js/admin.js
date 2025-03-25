@@ -17,9 +17,248 @@ document.addEventListener('DOMContentLoaded', function() {
     const modelsList = document.getElementById('modelsList');
     const naturezaModelsList = document.getElementById('naturezaModelsList');
     
+    const trainEvaluatorForm = document.getElementById('trainEvaluatorForm');
+    const evaluatorTrainingStatus = document.getElementById('evaluatorTrainingStatus');
+    const evaluatorsList = document.getElementById('evaluatorsList');
+
     // Inicialização
     loadModels();
     loadNaturezaModels();
+    loadEvaluators(); 
+    
+    function loadEvaluators() {
+        if (!evaluatorsList) return;
+        
+        evaluatorsList.innerHTML = `
+            <div class="spinner"></div>
+            <p>Carregando avaliadores disponíveis...</p>
+        `;
+        
+        fetch('/api/natureza-evaluators')
+            .then(response => response.json())
+            .then(data => {
+                if (!data.evaluators || data.evaluators.length === 0) {
+                    evaluatorsList.innerHTML = `
+                        <div class="status-container info">
+                            <p>Nenhum avaliador de natureza disponível. Por favor, treine um avaliador primeiro.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let evaluatorsHtml = '';
+                data.evaluators.forEach(evaluator => {
+                    evaluatorsHtml += `
+                        <div class="model-item" data-provider="${evaluator.provider}">
+                            <div class="model-info">
+                                <div class="model-name">Avaliador ${evaluator.provider}</div>
+                                <div class="model-meta">
+                                    Naturezas: ${evaluator.natureza_count} | Criado em: ${formatDate(evaluator.created_at)}
+                                    ${evaluator.is_active ? '<span class="badge-active">Ativo</span>' : ''}
+                                </div>
+                            </div>
+                            <div class="model-actions">
+                                <button class="small-button use-evaluator-btn" data-provider="${evaluator.provider}">Usar</button>
+                                <button class="small-button delete-evaluator-btn">Excluir</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                evaluatorsList.innerHTML = evaluatorsHtml;
+                
+                // Adiciona event listeners para os botões
+                document.querySelectorAll('.use-evaluator-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const provider = this.getAttribute('data-provider');
+                        useEvaluator(provider);
+                    });
+                });
+                
+                document.querySelectorAll('.delete-evaluator-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const modelItem = this.closest('.model-item');
+                        const provider = modelItem.getAttribute('data-provider');
+                        deleteEvaluator(provider, modelItem);
+                    });
+                });
+            })
+            .catch(error => {
+                console.error('Erro ao carregar avaliadores:', error);
+                evaluatorsList.innerHTML = `
+                    <div class="status-container error">
+                        <p>Erro ao carregar avaliadores: ${error.message}</p>
+                    </div>
+                `;
+            });
+    }
+    
+    // Função auxiliar para formatar datas
+    function formatDate(dateString) {
+        if (!dateString) return 'Desconhecido';
+        
+        // Verifica se é uma data ISO
+        if (dateString.includes('T')) {
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) return dateString;
+            
+            return date.toLocaleString('pt-BR');
+        }
+        
+        return dateString;
+    }
+    
+    // Funções para gerenciar avaliadores
+    function useEvaluator(provider) {
+        fetch('/api/change-model', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ model_type: provider }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification(`Modelo e avaliador alterados para ${provider}`, 'success');
+                loadEvaluators(); // Recarrega para atualizar o status "Ativo"
+            } else {
+                showNotification(data.message, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Erro:', error);
+            showNotification(`Erro ao ativar avaliador: ${error.message}`, 'error');
+        });
+    }
+    
+    function deleteEvaluator(provider, modelItem) {
+        if (!confirm(`Tem certeza que deseja excluir o avaliador ${provider}?`)) return;
+        
+        fetch('/api/delete-natureza-evaluator', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ provider: provider }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification(data.message, 'success');
+                if (modelItem) {
+                    modelItem.remove();
+                }
+            } else {
+                showNotification(data.message, 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Erro:', error);
+            showNotification(`Erro ao excluir avaliador: ${error.message}`, 'error');
+        });
+    }
+    
+    // Adicionar este event listener para o formulário de treinamento do avaliador
+    if (trainEvaluatorForm) {
+        trainEvaluatorForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            const provider = document.getElementById('evaluatorProvider').value;
+            const forceRebuild = document.getElementById('forceRebuildEvaluator').checked;
+            const mcaspFile = document.getElementById('mcaspFile').files[0];
+            
+            // Mostra status de treinamento
+            if (evaluatorTrainingStatus) {
+                trainEvaluatorForm.style.display = 'none';
+                evaluatorTrainingStatus.classList.remove('hidden');
+            }
+            
+            try {
+                // Se um arquivo foi fornecido, precisamos fazer upload primeiro
+                let mcaspPath = null;
+                
+                if (mcaspFile) {
+                    // Cria um FormData para upload do arquivo
+                    const formData = new FormData();
+                    formData.append('file', mcaspFile);
+                    
+                    // Faz upload do arquivo
+                    const uploadResponse = await fetch('/api/upload-mcasp', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!uploadResponse.ok) {
+                        throw new Error('Falha ao fazer upload do arquivo MCASP');
+                    }
+                    
+                    const uploadResult = await uploadResponse.json();
+                    mcaspPath = uploadResult.file_path;
+                }
+                
+                // Agora treina o avaliador
+                const trainResponse = await fetch('/api/train-natureza-evaluator', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        provider: provider,
+                        mcasp_path: mcaspPath,
+                        force_rebuild: forceRebuild
+                    }),
+                });
+                
+                const trainResult = await trainResponse.json();
+                
+                if (evaluatorTrainingStatus) {
+                    if (trainResult.success) {
+                        evaluatorTrainingStatus.innerHTML = `
+                            <div class="status-container success">
+                                <i class="fas fa-check-circle"></i>
+                                <p>${trainResult.message}</p>
+                            </div>
+                            <button type="button" class="primary-button reset-evaluator-form-btn">Voltar</button>
+                        `;
+                    } else {
+                        evaluatorTrainingStatus.innerHTML = `
+                            <div class="status-container error">
+                                <i class="fas fa-exclamation-circle"></i>
+                                <p>Erro no treinamento: ${trainResult.message}</p>
+                            </div>
+                            <button type="button" class="primary-button reset-evaluator-form-btn">Voltar</button>
+                        `;
+                    }
+                    
+                    // Adiciona evento para resetar o formulário
+                    document.querySelector('.reset-evaluator-form-btn').addEventListener('click', function() {
+                        evaluatorTrainingStatus.classList.add('hidden');
+                        trainEvaluatorForm.style.display = 'block';
+                        // Recarrega a lista de avaliadores
+                        loadEvaluators();
+                    });
+                }
+                
+            } catch (error) {
+                console.error('Erro:', error);
+                if (evaluatorTrainingStatus) {
+                    evaluatorTrainingStatus.innerHTML = `
+                        <div class="status-container error">
+                            <i class="fas fa-exclamation-circle"></i>
+                            <p>Erro ao se comunicar com o servidor: ${error.message}</p>
+                        </div>
+                        <button type="button" class="primary-button reset-evaluator-form-btn">Voltar</button>
+                    `;
+                    
+                    document.querySelector('.reset-evaluator-form-btn').addEventListener('click', function() {
+                        evaluatorTrainingStatus.classList.add('hidden');
+                        trainEvaluatorForm.style.display = 'block';
+                    });
+                }
+            }
+        });
+    }
     
     // Gerenciamento de abas
     tabButtons.forEach(button => {
