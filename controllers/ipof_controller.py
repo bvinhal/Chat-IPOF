@@ -13,7 +13,14 @@ from config import active_config
 from models.ipof_model import IPOF, ParcelaIPOF
 from models.natureza_classifier import NaturezaClassifier
 from controllers.chat_controller import ChatController
-from utils.document_utils import extract_text_from_file, extract_valor_monetario, extract_meses
+from utils.document_utils import (
+    extract_text_from_file, 
+    extract_valor_monetario, 
+    extract_meses,
+    extract_data_inicio,
+    extract_data_termino,
+    calcular_quantidade_meses
+)
 from utils.ipof_html_generator import IPOFHtmlGenerator
 
 # Configuração de logging
@@ -61,7 +68,8 @@ class IPOFController:
             'quantidade_meses': 0,
             'numero_processo': '',
             'dotacao_orcamentaria': '',
-            'data_inicio': None
+            'data_inicio': None,
+            'data_termino': None  # Adicionado campo para data de término
         }
         
         # IPOF atual
@@ -91,7 +99,8 @@ class IPOFController:
             'quantidade_meses': 0,
             'numero_processo': '',
             'dotacao_orcamentaria': '',
-            'data_inicio': None
+            'data_inicio': None,
+            'data_termino': None  # Reinicia também a data de término
         }
         self.ipof_atual = None
         self.html_file_name = None
@@ -184,22 +193,37 @@ class IPOFController:
     
     def _resumir_texto(self, texto: str, ai_model) -> Dict[str, Any]:
         """
-        Resumir texto usando o modelo de IA.
+        Resumir texto usando o modelo de IA e extrair informações relevantes.
         
         Args:
             texto: Texto a ser resumido
             ai_model: Modelo de IA para resumir o texto
                 
         Returns:
-            Dict[str, Any]: Resumo, valor identificado e quantidade de meses identificada
+            Dict[str, Any]: Resumo e informações extraídas (valor, meses, datas)
         """
         try:
             # Inicializa o cliente OpenAI
             client = OpenAI(api_key=active_config.OPENAI_API_KEY)
             
-            # Extrai valor e meses do texto original usando os métodos específicos
+            # Extrai valores usando funções especializadas
             valor_identificado = extract_valor_monetario(texto)
             meses_identificados = extract_meses(texto)
+            data_inicio = extract_data_inicio(texto)
+            data_termino = extract_data_termino(texto)
+            
+            # Logs para diagnóstico
+            self.logger.info(f"Valor monetário extraído: {valor_identificado}")
+            self.logger.info(f"Meses identificados: {meses_identificados}")
+            self.logger.info(f"Data início identificada: {data_inicio}")
+            self.logger.info(f"Data término identificada: {data_termino}")
+            
+            # Se temos data de início e término, calcula a quantidade de meses
+            if data_inicio and data_termino:
+                meses_calculados = calcular_quantidade_meses(data_inicio, data_termino)
+                # Substitui a quantidade identificada diretamente pelo valor calculado
+                meses_identificados = meses_calculados
+                self.logger.info(f"Meses calculados a partir de datas: {meses_calculados}")
             
             # Cria um prompt para resumir o texto que seja fiel ao conteúdo original
             prompt = (
@@ -228,33 +252,47 @@ class IPOFController:
             # Formata o resumo para incluir informações sobre valor e meses apenas se foram realmente encontrados
             resumo_formatado = resumo
             
-            # Adiciona informações sobre valor e meses ao final do resumo, apenas se foram encontrados
+            # Adiciona informações sobre valor e meses ao final do resumo, apenas se foram realmente encontrados
             if valor_identificado:
                 resumo_formatado += f"\n\nValor total da despesa: R$ {valor_identificado:.2f}"
             else:
                 resumo_formatado += "\n\nValor total da despesa: Não encontrado no texto"
-                
+                    
             if meses_identificados:
                 resumo_formatado += f"\n\nQuantidade de meses previstos: {meses_identificados}"
             else:
                 resumo_formatado += "\n\nQuantidade de meses previstos: Não encontrado no texto"
             
+            # Adiciona informação sobre as datas identificadas
+            if data_inicio:
+                resumo_formatado += f"\n\nData de início: {data_inicio.strftime('%d/%m/%Y')}"
+            else:
+                resumo_formatado += "\n\nData de início: Não encontrada no texto"
+                    
+            if data_termino:
+                resumo_formatado += f"\n\nData de término: {data_termino.strftime('%d/%m/%Y')}"
+            
             return {
                 'resumo': resumo_formatado,
                 'valor_identificado': valor_identificado,
-                'meses_identificados': meses_identificados
+                'meses_identificados': meses_identificados,
+                'data_inicio': data_inicio,
+                'data_termino': data_termino
             }
                 
         except Exception as e:
             self.logger.error(f"Erro ao resumir texto com GPT-3.5 Turbo: {str(e)}")
-            # Truncamento simples em caso de erro
-            resumo = texto[:500] + "..." if len(texto) > 500 else texto
+            # Em caso de erro, retorna um resumo simplificado mas garante que o fluxo continua
+            resumo_simples = texto[:500] + "..." if len(texto) > 500 else texto
+            
             return {
-                'resumo': resumo,
-                'valor_identificado': extract_valor_monetario(texto),
-                'meses_identificados': extract_meses(texto)
+                'resumo': f"Resumo: {resumo_simples}\n\nValor total da despesa: Não encontrado no texto\n\nQuantidade de meses previstos: Não encontrado no texto\n\nData de início: Não encontrada no texto",
+                'valor_identificado': None,
+                'meses_identificados': None,
+                'data_inicio': None,
+                'data_termino': None
             }
-                                    
+                
     def _processar_descricao(self, conteudo: str, ai_model=None, fonte: str = "mensagem") -> str:
         """
         Processa a descrição da despesa.
@@ -272,6 +310,8 @@ class IPOFController:
         resumo = resultado['resumo']
         valor_identificado = resultado['valor_identificado']
         meses_identificados = resultado['meses_identificados']
+        data_inicio = resultado['data_inicio']
+        data_termino = resultado['data_termino']
         
         # Armazena o resumo
         self.dados_temp['descricao'] = resumo
@@ -279,9 +319,17 @@ class IPOFController:
         # Armazena valor e meses identificados, se houver
         if valor_identificado:
             self.dados_temp['valor_total'] = valor_identificado
+            self.logger.info(f"Valor monetário armazenado: {valor_identificado}")
         
         if meses_identificados:
             self.dados_temp['quantidade_meses'] = meses_identificados
+        
+        # Armazena as datas identificadas, se houver
+        if data_inicio:
+            self.dados_temp['data_inicio'] = data_inicio
+            
+        if data_termino:
+            self.dados_temp['data_termino'] = data_termino
         
         # Classifica a natureza de despesa
         sugestoes_natureza = []
@@ -318,7 +366,7 @@ class IPOFController:
             resposta += "Por favor, informe a natureza de despesa adequada para esta descrição."
         
         return resposta
-    
+                    
     def _processar_natureza(self, mensagem: str) -> str:
         """
         Processa a resposta do usuário sobre a natureza de despesa.
@@ -479,7 +527,31 @@ class IPOFController:
         # Avança para o próximo estado
         self.estado_atual = self.ESTADOS['DATA_INICIO']
         
-        # Pergunta pela data de início do desembolso
+        # Se já temos a data de início, pula para a confirmação e cria o IPOF
+        if self.dados_temp['data_inicio']:
+            self.logger.info(f"Data de início já identificada: {self.dados_temp['data_inicio']}. Pulando etapa.")
+            # Gera o IPOF
+            self._gerar_ipof()
+            
+            # Avança para o estado de confirmação
+            self.estado_atual = self.ESTADOS['CONFIRMACAO']
+            
+            # Mensagem informando sobre as datas identificadas
+            mensagem_data = f"A data de início {self.dados_temp['data_inicio'].strftime('%d/%m/%Y')} foi identificada no documento."
+            
+            if self.dados_temp['data_termino']:
+                mensagem_data += f" A data de término {self.dados_temp['data_termino'].strftime('%d/%m/%Y')} também foi identificada."
+                
+            if self.dados_temp['quantidade_meses'] > 0:
+                mensagem_data += f" A quantidade de meses ({self.dados_temp['quantidade_meses']}) foi calculada automaticamente."
+            
+            return (
+                f"{mensagem_data}\n"
+                f"Todas as informações foram coletadas. O IPOF foi gerado.\n\n"
+                f"Você deseja visualizar o IPOF? (sim/não)"
+            )
+        
+        # Se não temos a data de início, pergunta ao usuário
         return "Qual é a data de início do desembolso? (formato: dd/mm/aaaa)"
     
     def _processar_data_inicio(self, mensagem: str) -> str:

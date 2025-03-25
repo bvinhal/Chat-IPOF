@@ -2,6 +2,7 @@
 
 import os
 import logging
+from datetime import datetime
 from typing import Optional
 import re
 
@@ -134,7 +135,7 @@ def extract_text_from_txt(file_path: str) -> Optional[str]:
         file_path: Caminho para o arquivo TXT
         
     Returns:
-        Optional[str]: Texto extraído ou None em caso de erro
+        Optional[str]: Texto extraído ou None se não encontrado
     """
     try:
         # Verifica se o arquivo existe
@@ -193,7 +194,7 @@ def extract_text_from_file(file_path: str) -> Optional[str]:
 
 def extract_valor_monetario(texto: str) -> Optional[float]:
     """
-    Extrai valor monetário de um texto.
+    Extrai valor monetário de um texto, seguindo o padrão brasileiro (vírgula para separar casas decimais).
     
     Args:
         texto: Texto para extrair o valor
@@ -202,43 +203,91 @@ def extract_valor_monetario(texto: str) -> Optional[float]:
         Optional[float]: Valor extraído ou None se não encontrado
     """
     try:
-        # Padrões para identificar valores monetários
-        # Busca por "R$ X.XXX,XX" ou "X.XXX,XX reais" ou variações
-        padrao_valor = r'R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?)'
-        padrao_valor_alt = r'(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?)\s*(?:reais|REAIS)'
+        # Primeiro procura por padrões mais específicos com palavra "valor"
+        padrao_valor = r'valor\s+(?:total|global|estimado|contratual)?\s*(?:de|:)?\s*(?:R\$\s*)?([\d\.]+,\d{1,2}|[\d\.]+|\d+)'
+        padrao_no_valor = r'no\s+valor\s+(?:total|global|estimado)?\s*(?:de|:)?\s*(?:R\$\s*)?([\d\.]+,\d{1,2}|[\d\.]+|\d+)'
         
-        # Busca por palavras-chave antes de valores
-        padrao_contexto = [
-            r'valor\s+(?:total|global|estimado|contratual)?\s*(?:de|:)?\s*R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?)',
-            r'(?:total|global|estimado|contratual)\s+(?:de|:)?\s*R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?)',
-            r'orçamento\s+(?:de|:)?\s*R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?)',
-            r'custo\s+(?:total|estimado)?\s*(?:de|:)?\s*R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?)'
-        ]
-        
-        # Primeiro, tenta encontrar com contexto
-        for padrao in padrao_contexto:
+        # Tenta os padrões mais específicos primeiro
+        for padrao in [padrao_no_valor, padrao_valor]:
             match = re.search(padrao, texto, re.IGNORECASE)
             if match:
-                valor_str = match.group(1).replace('.', '').replace(',', '.')
+                valor_str = match.group(1)
+                logger.info(f"Valor monetário encontrado: {valor_str}")
+                
+                # Converte para formato que o Python entende
+                # Remove espaços e caracteres extras
+                valor_str = valor_str.strip()
+                
+                # Trata separadores decimais
+                if ',' in valor_str:
+                    partes = valor_str.split(',')
+                    parte_inteira = partes[0].replace('.', '')  # Remove pontos de milhar
+                    parte_decimal = partes[1] if len(partes) > 1 else '0'
+                    valor_str = f"{parte_inteira}.{parte_decimal}"
+                else:
+                    # Se não tem vírgula, assume valor inteiro
+                    valor_str = valor_str.replace('.', '')
+                
+                logger.info(f"Valor monetário convertido para processamento: {valor_str}")
+                
+                try:
+                    valor = float(valor_str)
+                    return valor
+                except ValueError:
+                    logger.warning(f"Não foi possível converter '{valor_str}' para float")
+                    continue
+        
+        # Procura por padrões genéricos com R$
+        padrao_reais = r'R\$\s*([\d\.]+,\d{1,2}|[\d\.]+|\d+)'
+        match = re.search(padrao_reais, texto)
+        if match:
+            valor_str = match.group(1)
+            logger.info(f"Valor monetário com R$ encontrado: {valor_str}")
+            
+            # Mesmo processo de conversão
+            if ',' in valor_str:
+                partes = valor_str.split(',')
+                parte_inteira = partes[0].replace('.', '')
+                parte_decimal = partes[1] if len(partes) > 1 else '0'
+                valor_str = f"{parte_inteira}.{parte_decimal}"
+            else:
+                valor_str = valor_str.replace('.', '')
+            
+            try:
                 return float(valor_str)
+            except ValueError:
+                pass
         
-        # Se não encontrou com contexto, tenta padrões simples
-        match = re.search(padrao_valor, texto)
-        if match:
-            valor_str = match.group(1).replace('.', '').replace(',', '.')
-            return float(valor_str)
+        # Procura por números grandes que poderiam ser valores monetários
+        # Este é um último recurso para textos sem contexto explícito
+        numeros = re.findall(r'(\d{4,}(?:,\d{1,2})?)', texto)
+        for num in numeros:
+            logger.info(f"Número possível de ser valor monetário: {num}")
+            
+            # Mesmo processo de conversão
+            if ',' in num:
+                partes = num.split(',')
+                parte_inteira = partes[0].replace('.', '')
+                parte_decimal = partes[1] if len(partes) > 1 else '0'
+                valor_str = f"{parte_inteira}.{parte_decimal}"
+            else:
+                valor_str = num.replace('.', '')
+            
+            try:
+                valor = float(valor_str)
+                # Aplica filtro para evitar falsos positivos
+                if 1000 <= valor <= 1_000_000_000:
+                    return valor
+            except ValueError:
+                continue
         
-        match = re.search(padrao_valor_alt, texto)
-        if match:
-            valor_str = match.group(1).replace('.', '').replace(',', '.')
-            return float(valor_str)
-        
+        logger.info("Nenhum valor monetário encontrado no texto")
         return None
         
     except Exception as e:
         logger.error(f"Erro ao extrair valor monetário: {str(e)}")
         return None
-
+                        
 def extract_meses(texto: str) -> Optional[int]:
     """
     Extrai quantidade de meses do texto.
@@ -275,3 +324,212 @@ def extract_meses(texto: str) -> Optional[int]:
     except Exception as e:
         logger.error(f"Erro ao extrair meses: {str(e)}")
         return None
+
+def extract_data_inicio(texto: str) -> Optional[datetime]:
+    """
+    Extrai a data de início de desembolso/vigência de um texto.
+    
+    Args:
+        texto: Texto para extrair a data
+        
+    Returns:
+        Optional[datetime]: Data de início extraída ou None se não encontrada
+    """
+    try:
+        # Padrões para identificar datas de início
+        padrao_data = r'(\d{2}[/.-]\d{2}[/.-]\d{4}|\d{2}[/.-]\d{2}[/.-]\d{2})'
+        
+        # Padrões de contexto para data de início
+        padroes_contexto = [
+            r'(?:data\s+(?:de|do)\s+(?:início|inicio|desembolso|pagamento|vigência|vigencia))\s*(?:do contrato|da despesa|do pagamento|da vigência|da execução|:)?\s*' + padrao_data,
+            r'(?:início|inicio|começo|desembolso inicial|primeira parcela)\s+(?:em|na data|no dia|a partir de|previsto para)\s*(?::)?\s*' + padrao_data,
+            r'(?:início|inicio)\s+(?:dos|das|de)\s+(?:pagamentos|desembolsos|serviços|atividades)\s*(?::)?\s*' + padrao_data,
+            r'(?:primeiro|1º|1o)\s+(?:pagamento|desembolso)\s*(?::)?\s*' + padrao_data,
+            r'(?:vigência|vigencia|prazo)\s+(?:contratual|do contrato)\s*(?:a partir de|iniciando em)\s*(?::)?\s*' + padrao_data,
+            r'(?:contrato|despesa)\s+(?:inicia(?:-se)?|começa|tem início)\s*(?:em|no dia|na data|a partir de)\s*(?::)?\s*' + padrao_data,
+            r'(?:a partir de|desde)\s*' + padrao_data
+        ]
+        
+        # Tenta encontrar com contexto específico primeiro
+        for padrao in padroes_contexto:
+            match = re.search(padrao, texto.lower())
+            if match:
+                data_str = match.group(1)
+                # Tenta converter a string para data
+                try:
+                    # Normaliza o formato da data
+                    data_str = re.sub(r'[.-]', '/', data_str)
+                    
+                    # Verifica o formato e converte
+                    if re.match(r'\d{2}/\d{2}/\d{4}', data_str):
+                        dia, mes, ano = map(int, data_str.split('/'))
+                        return datetime(ano, mes, dia)
+                    elif re.match(r'\d{2}/\d{2}/\d{2}', data_str):
+                        dia, mes, ano = map(int, data_str.split('/'))
+                        # Ajusta para 2000 se o ano for pequeno
+                        if ano < 50:
+                            ano += 2000
+                        else:
+                            ano += 1900
+                        return datetime(ano, mes, dia)
+                except (ValueError, IndexError):
+                    continue  # Tenta o próximo padrão se a conversão falhar
+        
+        # Tenta outras abordagens mais específicas se não tiver encontrado
+        meses_abrev = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+        meses_completos = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+        
+        # Combinando os meses para um padrão mais completo
+        meses_str = '|'.join(meses_abrev + meses_completos)
+        
+        # Padrão para datas por extenso (ex: 15 de janeiro de 2023)
+        padrao_extenso = r'(\d{1,2})\s+(?:de\s+)?(' + meses_str + r')(?:\s+de)?\s+(\d{4}|\d{2})'
+        
+        # Busca por datas por extenso no contexto de início
+        for contexto in ['início', 'inicio', 'começo', 'data inicial', 'vigência', 'vigencia', 'a partir de']:
+            padrao = r'(?:' + contexto + r')\s+(?:em|no dia|na data|a partir de|previsto para)?\s*(?::)?\s*' + padrao_extenso
+            match = re.search(padrao, texto.lower())
+            if match:
+                try:
+                    dia = int(match.group(1))
+                    mes_str = match.group(2).lower()
+                    ano = int(match.group(3))
+                    
+                    # Ajusta o ano se necessário
+                    if ano < 50:
+                        ano += 2000
+                    elif ano < 100:
+                        ano += 1900
+                    
+                    # Determina o número do mês
+                    if mes_str in meses_abrev:
+                        mes = meses_abrev.index(mes_str) + 1
+                    else:
+                        mes = meses_completos.index(mes_str) + 1
+                    
+                    return datetime(ano, mes, dia)
+                except (ValueError, IndexError):
+                    pass
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"Erro ao extrair data de início: {str(e)}")
+        return None
+
+def extract_data_termino(texto: str) -> Optional[datetime]:
+    """
+    Extrai a data de término/conclusão de um texto.
+    
+    Args:
+        texto: Texto para extrair a data
+        
+    Returns:
+        Optional[datetime]: Data de término extraída ou None se não encontrada
+    """
+    try:
+        # Padrões para identificar datas
+        padrao_data = r'(\d{2}[/.-]\d{2}[/.-]\d{4}|\d{2}[/.-]\d{2}[/.-]\d{2})'
+        
+        # Padrões de contexto para data de término
+        padroes_contexto = [
+            r'(?:data\s+(?:de|do)\s+(?:término|termino|fim|conclusão|conclusao|encerramento))\s*(?:do contrato|da despesa|do pagamento|da vigência|da execução|:)?\s*' + padrao_data,
+            r'(?:término|termino|fim|encerramento|conclusão|conclusao)\s+(?:em|na data|no dia|previsto para)\s*(?::)?\s*' + padrao_data,
+            r'(?:até|ate)\s+(?:o dia|a data)\s*(?::)?\s*' + padrao_data,
+            r'(?:última|ultima)\s+(?:parcela|pagamento|desembolso)\s*(?:em|na data|no dia|previsto para)?\s*(?::)?\s*' + padrao_data,
+            r'(?:vigência|vigencia|prazo)\s+(?:contratual|do contrato)\s*(?:até|ate)\s*(?::)?\s*' + padrao_data,
+            r'(?:contrato|despesa)\s+(?:termina|finaliza|encerra(?:-se)?)\s*(?:em|no dia|na data)\s*(?::)?\s*' + padrao_data,
+            r'(?:válido|valido)\s+(?:até|ate)\s*' + padrao_data
+        ]
+        
+        # Tenta encontrar com contexto específico primeiro
+        for padrao in padroes_contexto:
+            match = re.search(padrao, texto.lower())
+            if match:
+                data_str = match.group(1)
+                # Tenta converter a string para data
+                try:
+                    # Normaliza o formato da data
+                    data_str = re.sub(r'[.-]', '/', data_str)
+                    
+                    # Verifica o formato e converte
+                    if re.match(r'\d{2}/\d{2}/\d{4}', data_str):
+                        dia, mes, ano = map(int, data_str.split('/'))
+                        return datetime(ano, mes, dia)
+                    elif re.match(r'\d{2}/\d{2}/\d{2}', data_str):
+                        dia, mes, ano = map(int, data_str.split('/'))
+                        # Ajusta para 2000 se o ano for pequeno
+                        if ano < 50:
+                            ano += 2000
+                        else:
+                            ano += 1900
+                        return datetime(ano, mes, dia)
+                except (ValueError, IndexError):
+                    continue  # Tenta o próximo padrão se a conversão falhar
+        
+        # Tenta outras abordagens mais específicas se não tiver encontrado
+        meses_abrev = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+        meses_completos = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+        
+        # Combinando os meses para um padrão mais completo
+        meses_str = '|'.join(meses_abrev + meses_completos)
+        
+        # Padrão para datas por extenso (ex: 15 de janeiro de 2023)
+        padrao_extenso = r'(\d{1,2})\s+(?:de\s+)?(' + meses_str + r')(?:\s+de)?\s+(\d{4}|\d{2})'
+        
+        # Busca por datas por extenso no contexto de término
+        for contexto in ['término', 'termino', 'fim', 'conclusão', 'conclusao', 'encerramento', 'até', 'ate']:
+            padrao = r'(?:' + contexto + r')\s+(?:em|no dia|na data|previsto para)?\s*(?::)?\s*' + padrao_extenso
+            match = re.search(padrao, texto.lower())
+            if match:
+                try:
+                    dia = int(match.group(1))
+                    mes_str = match.group(2).lower()
+                    ano = int(match.group(3))
+                    
+                    # Ajusta o ano se necessário
+                    if ano < 50:
+                        ano += 2000
+                    elif ano < 100:
+                        ano += 1900
+                    
+                    # Determina o número do mês
+                    if mes_str in meses_abrev:
+                        mes = meses_abrev.index(mes_str) + 1
+                    else:
+                        mes = meses_completos.index(mes_str) + 1
+                    
+                    return datetime(ano, mes, dia)
+                except (ValueError, IndexError):
+                    pass
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"Erro ao extrair data de término: {str(e)}")
+        return None
+
+def calcular_quantidade_meses(data_inicio: datetime, data_termino: datetime) -> int:
+    """
+    Calcula a quantidade de meses entre duas datas.
+    
+    Args:
+        data_inicio: Data de início
+        data_termino: Data de término
+        
+    Returns:
+        int: Quantidade de meses entre as datas
+    """
+    try:
+        # Calcula a diferença em meses
+        meses = (data_termino.year - data_inicio.year) * 12 + (data_termino.month - data_inicio.month)
+        
+        # Ajusta se o dia do mês de término for menor que o dia do mês de início
+        if data_termino.day < data_inicio.day:
+            meses -= 1
+        
+        # Garante pelo menos 1 mês
+        return max(1, meses + 1)  # +1 porque estamos contando meses completos
+    except Exception as e:
+        logger.error(f"Erro ao calcular quantidade de meses: {str(e)}")
+        return 1  # Retorna 1 em caso de erro
