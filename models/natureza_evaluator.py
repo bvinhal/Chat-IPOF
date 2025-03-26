@@ -7,14 +7,17 @@ import json
 import re
 import traceback
 from typing import List, Dict, Any, Optional, Tuple
-import numpy as np
 from datetime import datetime
 
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.vectorstores import FAISS
+from langchain.chains import RetrievalQA
+from langchain.schema import HumanMessage
+
 from config import active_config
-from models.embedding_model_base import EmbeddingModelBase
-from models.openai_embedding_model import OpenAIEmbeddingModel
-from models.claude_embedding_model import ClaudeEmbeddingModel 
-from models.gemini_embedding_model import GeminiEmbeddingModel
+from models.ai_model import AIModel  # Importando a classe base abstrata
+from utils.document_utils import extract_text_from_file
 
 # Configuração de logging
 logging.basicConfig(
@@ -23,344 +26,369 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class NaturezaEvaluator:
+class NaturezaEvaluator(AIModel):
     """
-    Avaliador de natureza de despesa que utiliza o MCASP como base de conhecimento.
-    Avalia se uma natureza de despesa é adequada para uma determinada descrição.
+    Avaliador de natureza de despesa usando RAG (Retrieval-Augmented Generation).
+    Utiliza o MCASP como base de conhecimento para avaliar se uma natureza é adequada.
     """
     
-    def __init__(self, embedding_provider: str = 'openai'):
+    def __init__(self, model_name: str = None):
         """
         Inicializa o avaliador de natureza.
         
         Args:
-            embedding_provider: Provedor de embeddings ('openai', 'claude', 'gemini')
+            model_name: Nome do modelo de linguagem a ser utilizado
+                        Se None, usa o modelo padrão configurado
         """
-        self.embedding_provider = embedding_provider
-        self.model_path = os.path.join(active_config.MODELS_DIR, f'natureza_evaluator_{embedding_provider}')
+        model_type = model_name or active_config.DEFAULT_MODEL
+        # Se model_name for 'claude', 'openai' ou 'gemini', usamos o modelo padrão desse tipo
+        if model_type in ['claude', 'openai', 'gemini']:
+            if model_type == 'claude':
+                model_name = active_config.CLAUDE_MODEL
+            elif model_type == 'openai':
+                model_name = active_config.OPENAI_MODEL
+            elif model_type == 'gemini':
+                model_name = active_config.GEMINI_MODEL
+        
+        # Chamada ao construtor da classe pai (AIModel)
+        super().__init__(model_name)
+        self.model_type = model_type
+        
+        # Caminho específico para modelo de avaliador
+        self.model_path = os.path.join(active_config.MODELS_DIR, f'natureza_evaluator_{model_type}')
         os.makedirs(self.model_path, exist_ok=True)
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
-        # Componentes do modelo
-        self.embedding_model = self._create_embedding_model()
-        self.embeddings = None
-        self.texts = None  # Textos do MCASP
-        self.natureza_map = {}  # Mapeamento de código para informações da natureza
+        # Chain para o fluxo RAG
+        self.chain = None
+        
+        # Inicializa o modelo de linguagem
+        if not self.initialize():
+            logger.warning(f"Falha ao inicializar modelo {model_type}. Algumas funcionalidades podem não estar disponíveis.")
+        
+        # Dicionário para mapear códigos de natureza para informações adicionais
+        self.natureza_map = {}
+        
+        # Armazena documentos originais
+        self.original_documents = []
+        
+        # Flag para indicar se o modelo foi treinado
         self.is_trained = False
-        
-    def _create_embedding_model(self) -> EmbeddingModelBase:
+    
+    def initialize(self) -> bool:
         """
-        Cria o modelo de embedding apropriado para o provedor especificado.
+        Inicializa o modelo e seus componentes.
         
         Returns:
-            EmbeddingModelBase: Modelo de embedding
+            bool: True se a inicialização foi bem-sucedida, False caso contrário
         """
         try:
-            if self.embedding_provider == 'openai':
-                return OpenAIEmbeddingModel()
-            elif self.embedding_provider == 'claude':
-                return ClaudeEmbeddingModel()
-            elif self.embedding_provider == 'gemini':
-                return GeminiEmbeddingModel()
+            # Importa o módulo correto baseado no tipo de modelo
+            if self.model_type == 'claude':
+                from langchain_anthropic import ChatAnthropic
+                
+                api_key = active_config.CLAUDE_API_KEY
+                if not api_key:
+                    logger.error("API key do Claude não configurada")
+                    return False
+                
+                self.llm = ChatAnthropic(
+                    model=self.model_name,
+                    anthropic_api_key=api_key,
+                    temperature=0.2,
+                    max_tokens=4096
+                )
+                
+            elif self.model_type == 'openai':
+                from langchain_openai import ChatOpenAI
+                
+                api_key = active_config.OPENAI_API_KEY
+                if not api_key:
+                    logger.error("API key da OpenAI não configurada")
+                    return False
+                
+                self.llm = ChatOpenAI(
+                    model=self.model_name,
+                    openai_api_key=api_key,
+                    temperature=0.2,
+                    max_tokens=4096
+                )
+                
+            elif self.model_type == 'gemini':
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                
+                api_key = active_config.GEMINI_API_KEY
+                if not api_key:
+                    logger.error("API key do Google Gemini não configurada")
+                    return False
+                
+                self.llm = ChatGoogleGenerativeAI(
+                    model=self.model_name,
+                    google_api_key=api_key,
+                    temperature=0.2,
+                    max_output_tokens=4096
+                )
+            
             else:
-                self.logger.error(f"Provedor de embeddings desconhecido: {self.embedding_provider}. Usando claude como fallback.")
-                return ClaudeEmbeddingModel()
-        except Exception as e:
-            self.logger.error(f"Erro ao criar modelo de embedding: {str(e)}. Usando claude como fallback.")
-            return ClaudeEmbeddingModel()
-    
-    def extract_mcasp_content(self, file_path: str) -> List[Dict[str, Any]]:
-        """
-        Extrai conteúdo do PDF do MCASP relacionado às naturezas de despesa.
-        
-        Args:
-            file_path: Caminho para o arquivo PDF do MCASP
+                logger.error(f"Tipo de modelo não suportado: {self.model_type}")
+                return False
             
-        Returns:
-            List[Dict[str, Any]]: Lista de dicionários com informações de natureza
-        """
-        from utils.document_utils import extract_text_from_file
-        
-        self.logger.info(f"Iniciando extração de conteúdo do MCASP: {file_path}")
-        
-        try:
-            # Extrai o texto completo do PDF
-            texto_completo = extract_text_from_file(file_path)
-            
-            if not texto_completo:
-                self.logger.error(f"Não foi possível extrair texto do arquivo {file_path}")
-                return []
-                
-            # Log do tamanho do texto extraído para verificação
-            self.logger.info(f"Texto extraído com sucesso: {len(texto_completo)} caracteres")
-            
-            # Verificar se temos conteúdo suficiente para processamento
-            if len(texto_completo) < 1000:
-                self.logger.warning(f"Texto extraído é muito curto: apenas {len(texto_completo)} caracteres")
-                # Salvar o texto em um arquivo para diagnóstico
-                debug_file = os.path.join(os.path.dirname(file_path), 'mcasp_debug.txt')
-                try:
-                    with open(debug_file, 'w', encoding='utf-8') as f:
-                        f.write(texto_completo)
-                    self.logger.info(f"Texto extraído salvo em {debug_file} para diagnóstico")
-                except Exception as e:
-                    self.logger.error(f"Erro ao salvar arquivo de debug: {str(e)}")
-            
-            # Processa o texto para extrair informações sobre naturezas de despesa
-            # Primeiro, divide por seções
-            naturezas_data = []
-            
-            # Vamos usar expressões regulares para identificar padrões de natureza de despesa
-            
-            # Padrão básico para códigos de natureza (pode precisar de ajustes)
-            # Procura por padrões como "3.3.90.30 - Material de Consumo"
-            natureza_pattern = r'(\d\.\d\.\d{1,2}\.\d{1,2})\s*[-–]\s*([^\n]+)'
-            matches = re.finditer(natureza_pattern, texto_completo)
-            
-            match_count = 0
-            for match in matches:
-                match_count += 1
-                codigo = match.group(1).strip()
-                nome = match.group(2).strip()
-                
-                # Tenta extrair a descrição completa (contexto após o título)
-                pos_inicio = match.end()
-                next_match = re.search(natureza_pattern, texto_completo[pos_inicio:])
-                
-                if next_match:
-                    descricao = texto_completo[pos_inicio:pos_inicio + next_match.start()].strip()
-                else:
-                    # Se for o último item, pega até 1000 caracteres após
-                    descricao = texto_completo[pos_inicio:pos_inicio + 1000].strip()
-                
-                # Limita a descrição para não ficar muito longa
-                descricao = descricao[:1000]
-                
-                naturezas_data.append({
-                    'codigo': codigo,
-                    'nome': nome,
-                    'descricao': descricao,
-                    'texto_completo': f"{codigo} - {nome}\n{descricao}"
-                })
-                
-                if match_count <= 5 or match_count % 20 == 0:
-                    self.logger.info(f"Natureza extraída: {codigo} - {nome}")
-            
-            # Se a extração regular falhar, tente uma abordagem mais básica
-            if len(naturezas_data) == 0:
-                self.logger.warning("Nenhuma natureza encontrada com padrão regular. Tentando método alternativo.")
-                
-                # Procurar por linhas que contenham padrões numéricos que parecem códigos de natureza
-                basic_pattern = r'\d\.\d\.\d{1,2}\.\d{1,2}'
-                lines = texto_completo.split('\n')
-                for i, line in enumerate(lines):
-                    if re.search(basic_pattern, line):
-                        # Se encontrou um possível código, cria uma entrada básica
-                        match = re.search(basic_pattern, line)
-                        codigo = match.group(0)
-                        # Tenta extrair o nome (o resto da linha após o código)
-                        nome = line[match.end():].strip()
-                        if not nome:
-                            nome = "Natureza não especificada"
-                            
-                        # Se tiver próximas linhas, usa como descrição
-                        descricao = ""
-                        if i < len(lines) - 1:
-                            descricao = lines[i+1]
-                            
-                        naturezas_data.append({
-                            'codigo': codigo,
-                            'nome': nome,
-                            'descricao': descricao,
-                            'texto_completo': f"{codigo} - {nome}\n{descricao}"
-                        })
-                
-                self.logger.info(f"Método alternativo extraiu {len(naturezas_data)} naturezas")
-            
-            # Se ainda não encontrou nada, cria um conjunto mínimo de naturezas para não quebrar o sistema
-            if len(naturezas_data) == 0:
-                self.logger.warning("Nenhuma natureza encontrada. Criando conjunto básico de naturezas para fallback.")
-                fallback_naturezas = [
-                    {
-                        'codigo': '3.3.90.30',
-                        'nome': 'Material de Consumo',
-                        'descricao': 'Despesas com materiais de consumo, como material de expediente, material de limpeza, etc.',
-                        'texto_completo': "3.3.90.30 - Material de Consumo\nDespesas com materiais de consumo, como material de expediente, material de limpeza, etc."
-                    },
-                    {
-                        'codigo': '3.3.90.39',
-                        'nome': 'Outros Serviços de Terceiros - Pessoa Jurídica',
-                        'descricao': 'Despesas com serviços prestados por pessoas jurídicas, como manutenção de equipamentos, serviços de informática, etc.',
-                        'texto_completo': "3.3.90.39 - Outros Serviços de Terceiros - Pessoa Jurídica\nDespesas com serviços prestados por pessoas jurídicas, como manutenção de equipamentos, serviços de informática, etc."
-                    },
-                    {
-                        'codigo': '4.4.90.52',
-                        'nome': 'Equipamentos e Material Permanente',
-                        'descricao': 'Despesas com aquisição de equipamentos e materiais permanentes, como mobiliário, veículos, etc.',
-                        'texto_completo': "4.4.90.52 - Equipamentos e Material Permanente\nDespesas com aquisição de equipamentos e materiais permanentes, como mobiliário, veículos, etc."
-                    }
-                ]
-                naturezas_data.extend(fallback_naturezas)
-                self.logger.info(f"Adicionadas {len(fallback_naturezas)} naturezas de fallback")
-            
-            self.logger.info(f"Total de {len(naturezas_data)} naturezas extraídas do MCASP")
-            return naturezas_data
+            logger.info(f"Modelo {self.model_type} inicializado com sucesso: {self.model_name}")
+            return True
             
         except Exception as e:
-            self.logger.error(f"Erro ao extrair conteúdo do MCASP: {str(e)}")
-            self.logger.error(f"Traceback completo:\n{traceback.format_exc()}")
-            
-            # Retorna um conjunto mínimo de naturezas para não quebrar o sistema
-            fallback_naturezas = [
-                {
-                    'codigo': '3.3.90.30',
-                    'nome': 'Material de Consumo',
-                    'descricao': 'Despesas com materiais de consumo, como material de expediente, material de limpeza, etc.',
-                    'texto_completo': "3.3.90.30 - Material de Consumo\nDespesas com materiais de consumo, como material de expediente, material de limpeza, etc."
-                },
-                {
-                    'codigo': '3.3.90.39',
-                    'nome': 'Outros Serviços de Terceiros - Pessoa Jurídica',
-                    'descricao': 'Despesas com serviços prestados por pessoas jurídicas, como manutenção de equipamentos, serviços de informática, etc.',
-                    'texto_completo': "3.3.90.39 - Outros Serviços de Terceiros - Pessoa Jurídica\nDespesas com serviços prestados por pessoas jurídicas, como manutenção de equipamentos, serviços de informática, etc."
-                },
-                {
-                    'codigo': '4.4.90.52',
-                    'nome': 'Equipamentos e Material Permanente',
-                    'descricao': 'Despesas com aquisição de equipamentos e materiais permanentes, como mobiliário, veículos, etc.',
-                    'texto_completo': "4.4.90.52 - Equipamentos e Material Permanente\nDespesas com aquisição de equipamentos e materiais permanentes, como mobiliário, veículos, etc."
-                }
-            ]
-            self.logger.info(f"Usando {len(fallback_naturezas)} naturezas de fallback devido a erro na extração")
-            return fallback_naturezas
+            logger.error(f"Erro ao inicializar modelo: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False
     
-    def train(self, mcasp_path: str = None, force_rebuild: bool = False) -> bool:
+    def validate_api_key(self) -> bool:
         """
-        Treina o avaliador de natureza usando o MCASP.
+        Verifica se a API key está configurada para o provedor especificado.
+        
+        Returns:
+            bool: True se a chave estiver configurada, False caso contrário
+        """
+        if self.model_type == 'claude':
+            return active_config.CLAUDE_API_KEY is not None and len(active_config.CLAUDE_API_KEY) > 0
+        elif self.model_type == 'openai':
+            return active_config.OPENAI_API_KEY is not None and len(active_config.OPENAI_API_KEY) > 0
+        elif self.model_type == 'gemini':
+            return active_config.GEMINI_API_KEY is not None and len(active_config.GEMINI_API_KEY) > 0
+        return False
+    
+    def _get_embeddings_model(self):
+        """
+        Obtém o modelo de embeddings apropriado para o provedor.
+        
+        Returns:
+            O modelo de embeddings correspondente
+        """
+        if self.model_type == 'openai':
+            from langchain_openai import OpenAIEmbeddings
+            return OpenAIEmbeddings(
+                openai_api_key=active_config.OPENAI_API_KEY,
+                model="text-embedding-ada-002"
+            )
+        else:
+            # Para Claude e Gemini (ou qualquer outro), usamos Hugging Face
+            from langchain_community.embeddings import HuggingFaceEmbeddings
+            return HuggingFaceEmbeddings(
+                model_name="sentence-transformers/all-MiniLM-L6-v2",
+                model_kwargs={'device': 'cpu'}
+            )
+    
+    def train(self, documents_path: str = None, force_rebuild: bool = False) -> bool:
+        """
+        Treina o avaliador usando o MCASP.
         
         Args:
-            mcasp_path: Caminho para o arquivo PDF do MCASP.
-                        Se None, procura no diretório padrão.
-            force_rebuild: Se True, força a recriação dos embeddings mesmo se já existirem
+            documents_path: Caminho para o arquivo PDF do MCASP ou diretório.
+                          Se None, procura no diretório padrão.
+            force_rebuild: Se True, força a recriação dos vetores mesmo se já existirem.
             
         Returns:
-            bool: True se o treinamento foi bem-sucedido
+            bool: True se o treinamento foi bem-sucedido, False caso contrário
         """
         try:
             # Define o caminho padrão se não for fornecido
-            if mcasp_path is None:
+            if documents_path is None:
                 mcasp_path = os.path.join(active_config.TRAINING_DATA_DIR, 'mcasp', 'mcasp.pdf')
-                
-            # Verificação detalhada do arquivo
-            if not os.path.exists(mcasp_path):
-                self.logger.error(f"Arquivo MCASP não encontrado em {mcasp_path}")
-                return False
-            
-            # Verificar tamanho do arquivo para garantir que não está vazio
-            file_size = os.path.getsize(mcasp_path)
-            if file_size == 0:
-                self.logger.error(f"Arquivo MCASP em {mcasp_path} está vazio (0 bytes)")
-                return False
-                
-            self.logger.info(f"Arquivo MCASP encontrado em {mcasp_path}, tamanho: {file_size/1024:.2f} KB")
-            
-            # Verifica se já existem embeddings salvos
-            if not force_rebuild:
-                embeddings, texts, metadata = self.embedding_model.load_embeddings()
-                if embeddings is not None and texts is not None and metadata is not None:
-                    # Verifica se os metadados contêm informações sobre naturezas
-                    if 'natureza_map' in metadata:
-                        self.embeddings = embeddings
-                        self.texts = texts
-                        self.natureza_map = metadata['natureza_map']
-                        self.is_trained = True
-                        self.logger.info(f"Modelo carregado com {len(self.texts)} textos e {len(self.natureza_map)} naturezas")
-                        return True
-            
-            # Se chegou aqui, precisa extrair
-# Se chegou aqui, precisa extrair do MCASP e gerar embeddings
-            self.logger.info("Extraindo naturezas do MCASP...")
-            naturezas_data = self.extract_mcasp_content(mcasp_path)
-            
-            if not naturezas_data:
-                self.logger.error("Nenhuma natureza extraída do MCASP")
-                return False
-            
-            # Mapeia códigos para informações de natureza
-            self.natureza_map = {item['codigo']: item for item in naturezas_data}
-            
-            # Extrai textos para geração de embeddings
-            texts = [item['texto_completo'] for item in naturezas_data]
-            
-            # Gera embeddings
-            try:
-                self.logger.info(f"Gerando embeddings com provedor {self.embedding_provider}")
-                embeddings = self.embedding_model.get_embeddings(texts)
-                
-                # Salva os embeddings
-                self.embedding_model.save_embeddings(
-                    embeddings, 
-                    texts, 
-                    {"natureza_map": self.natureza_map}
-                )
-                
-                self.embeddings = embeddings
-                self.texts = texts
-                self.is_trained = True
-                
-                # Salva o modelo
-                self.save_model()
-                
-                self.logger.info(f"Avaliador treinado com {len(naturezas_data)} naturezas")
-                return True
-                
-            except Exception as e:
-                if "openai.error" in str(e) or "api key" in str(e).lower() or "authentication" in str(e).lower():
-                    self.logger.error(f"Erro de API do OpenAI: {str(e)}")
-                    self.logger.info("Verificando a chave API...")
-                    
-                    # Tentar verificar a chave de API
-                    if hasattr(self.embedding_model, 'validate_api_key'):
-                        if not self.embedding_model.validate_api_key():
-                            self.logger.error("A chave de API não é válida ou não está configurada")
-                        else:
-                            self.logger.info("Chave de API validada, o erro pode ser relacionado a limites ou conexão")
-                    
-                    # Tentar fallback para outro modelo de embeddings
-                    self.logger.info("Tentando fallback para o modelo local de embeddings...")
-                    try:
-                        from sentence_transformers import SentenceTransformer
-                        
-                        self.logger.info("Inicializando modelo local de embeddings")
-                        model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-                        embeddings = model.encode(texts, show_progress_bar=True, convert_to_numpy=True)
-                        
-                        self.logger.info(f"Embeddings gerados com modelo local: {embeddings.shape}")
-                        
-                        # Atualiza o estado do modelo
-                        self.embeddings = embeddings
-                        self.texts = texts
-                        self.is_trained = True
-                        
-                        # Salva o modelo (usando nova estrutura para evitar conflitos)
-                        self.save_model()
-                        
-                        self.logger.info(f"Avaliador treinado com modelo local: {len(naturezas_data)} naturezas")
-                        return True
-                        
-                    except Exception as fallback_error:
-                        self.logger.error(f"Erro no fallback para modelo local: {str(fallback_error)}")
+                if os.path.exists(mcasp_path):
+                    documents_path = mcasp_path
                 else:
-                    self.logger.error(f"Erro ao gerar embeddings: {str(e)}")
-                
-                # Log do traceback completo
-                self.logger.error(f"Traceback completo:\n{traceback.format_exc()}")
+                    documents_path = os.path.join(active_config.TRAINING_DATA_DIR, 'mcasp')
+            
+            # Verifica se o arquivo/diretório existe
+            if not os.path.exists(documents_path):
+                logger.error(f"Caminho não encontrado: {documents_path}")
                 return False
+            
+            # Tenta carregar modelo existente a menos que force_rebuild seja True
+            if not force_rebuild and self.load_model():
+                logger.info("Modelo existente carregado com sucesso")
+                return True
+            
+            # Inicializa o LLM se ainda não estiver inicializado
+            if self.llm is None and not self.initialize():
+                logger.error("Falha ao inicializar o modelo de linguagem")
+                return False
+            
+            # Carrega documentos
+            logger.info(f"Carregando documentos de {documents_path}")
+            documents = self._load_documents(documents_path)
+            
+            if not documents:
+                logger.error("Nenhum documento encontrado para treinamento")
+                return False
+            
+            # Armazena os documentos originais para uso futuro
+            self.original_documents = documents
+            
+            # Divide os documentos em chunks
+            logger.info("Dividindo documentos em chunks")
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=200,
+                length_function=len,
+            )
+            chunks = text_splitter.split_documents(documents)
+            
+            # Extrai informações de natureza de despesa
+            self._extract_natureza_info(documents)
+            
+            # Inicializa os embeddings
+            logger.info(f"Inicializando embeddings para {self.model_type}")
+            embeddings = self._get_embeddings_model()
+            
+            # Cria vectorstore
+            logger.info("Criando vectorstore com FAISS")
+            self.vectorstore = FAISS.from_documents(chunks, embeddings)
+            
+            # Cria cadeia de recuperação e pergunta
+            self.chain = RetrievalQA.from_chain_type(
+                llm=self.llm,
+                chain_type="stuff",
+                retriever=self.vectorstore.as_retriever(
+                    search_kwargs={"k": 5}
+                ),
+                return_source_documents=True,
+                verbose=True
+            )
+            
+            self.is_trained = True
+            
+            # Salva o modelo treinado
+            self.save_model()
+            
+            logger.info(f"Avaliador de natureza treinado com sucesso, utilizando {len(chunks)} chunks")
+            return True
             
         except Exception as e:
-            self.logger.error(f"Erro durante treinamento do avaliador: {str(e)}")
-            self.logger.error(f"Traceback completo:\n{traceback.format_exc()}")
+            logger.error(f"Erro durante treinamento do avaliador: {str(e)}")
+            logger.error(traceback.format_exc())
             return False
+    
+    def _load_documents(self, documents_path: str) -> List[Any]:
+        """
+        Carrega documentos de um arquivo ou diretório.
+        
+        Args:
+            documents_path: Caminho para o arquivo ou diretório
+            
+        Returns:
+            List[Any]: Lista de documentos carregados
+        """
+        documents = []
+        
+        # Verifica se é um arquivo ou diretório
+        if os.path.isfile(documents_path):
+            # Verifica a extensão do arquivo
+            if documents_path.lower().endswith('.pdf'):
+                try:
+                    # Carrega o PDF
+                    loader = PyPDFLoader(documents_path)
+                    documents.extend(loader.load())
+                    logger.info(f"Carregado arquivo PDF com {len(documents)} páginas")
+                except Exception as e:
+                    logger.error(f"Erro ao carregar PDF: {str(e)}")
+            else:
+                # Para outros tipos de arquivo, tenta extrair texto geral
+                try:
+                    text = extract_text_from_file(documents_path)
+                    if text:
+                        # Cria um documento no formato esperado pelo LangChain
+                        from langchain.schema import Document
+                        documents.append(Document(
+                            page_content=text,
+                            metadata={"source": documents_path}
+                        ))
+                        logger.info(f"Carregado arquivo como texto genérico")
+                except Exception as e:
+                    logger.error(f"Erro ao extrair texto do arquivo: {str(e)}")
+        
+        elif os.path.isdir(documents_path):
+            # Carrega todos os arquivos PDF no diretório
+            from langchain_community.document_loaders import DirectoryLoader
+            
+            # Tenta carregar PDFs
+            try:
+                pdf_loader = DirectoryLoader(
+                    documents_path, 
+                    glob="**/*.pdf", 
+                    loader_cls=PyPDFLoader
+                )
+                pdf_docs = pdf_loader.load()
+                documents.extend(pdf_docs)
+                logger.info(f"Carregados {len(pdf_docs)} documentos PDF do diretório")
+            except Exception as e:
+                logger.error(f"Erro ao carregar PDFs do diretório: {str(e)}")
+            
+            # Tenta carregar TXT
+            try:
+                from langchain_community.document_loaders import TextLoader
+                txt_loader = DirectoryLoader(
+                    documents_path, 
+                    glob="**/*.txt", 
+                    loader_cls=TextLoader
+                )
+                txt_docs = txt_loader.load()
+                documents.extend(txt_docs)
+                logger.info(f"Carregados {len(txt_docs)} documentos TXT do diretório")
+            except Exception as e:
+                logger.error(f"Erro ao carregar TXTs do diretório: {str(e)}")
+        
+        return documents
+    
+    def _extract_natureza_info(self, documents: List[Any]) -> None:
+        """
+        Extrai informações básicas sobre naturezas de despesa para referência.
+        Isso não é o sistema principal de avaliação, apenas um suporte adicional.
+        
+        Args:
+            documents: Lista de documentos carregados
+        """
+        try:
+            import re
+            
+            # Combina o texto de todos os documentos
+            all_text = ""
+            for doc in documents:
+                if hasattr(doc, 'page_content'):
+                    all_text += doc.page_content + "\n\n"
+            
+            # Procura por padrões como "3.3.90.30 - Material de Consumo"
+            natureza_pattern = r'(\d\.\d\.\d{1,2}\.\d{1,2})\s*[-–]\s*([^\n]+)'
+            matches = re.finditer(natureza_pattern, all_text)
+            
+            # Mapeia códigos para nomes
+            for match in matches:
+                codigo = match.group(1).strip()
+                nome = match.group(2).strip()
+                
+                # Registra a natureza no mapa
+                self.natureza_map[codigo] = {
+                    'codigo': codigo,
+                    'nome': nome
+                }
+            
+            # Se não encontrou naturezas, cria algumas básicas para referência
+            if not self.natureza_map:
+                logger.warning("Não foi possível extrair naturezas diretamente. Criando mapa básico de referência.")
+                basic_naturezas = {
+                    '3.3.90.30': 'Material de Consumo',
+                    '3.3.90.39': 'Outros Serviços de Terceiros - Pessoa Jurídica',
+                    '4.4.90.52': 'Equipamentos e Material Permanente'
+                }
+                
+                for codigo, nome in basic_naturezas.items():
+                    self.natureza_map[codigo] = {
+                        'codigo': codigo,
+                        'nome': nome
+                    }
+            
+            logger.info(f"Extraídas {len(self.natureza_map)} naturezas de despesa para referência")
+        except Exception as e:
+            logger.error(f"Erro ao extrair informações de natureza: {str(e)}")
+            logger.error(traceback.format_exc())
     
     def evaluate(self, descricao: str, natureza_codigo: str) -> Dict[str, Any]:
         """
@@ -376,350 +404,343 @@ class NaturezaEvaluator:
         if not self.is_trained:
             # Tenta carregar o modelo se não estiver treinado
             if not self.load_model():
-                self.logger.error("Modelo não treinado e não foi possível carregar. Tentando treinar...")
+                logger.error("Modelo não treinado e não foi possível carregar. Tentando treinar...")
                 # Tenta treinar com o caminho padrão
                 mcasp_path = os.path.join(active_config.TRAINING_DATA_DIR, 'mcasp', 'mcasp.pdf')
                 if not self.train(mcasp_path):
                     raise ValueError("Modelo não treinado e não foi possível treinar automaticamente")
         
         try:
-            # Verifica se a natureza existe no mapa
-            if natureza_codigo not in self.natureza_map:
-                return {
-                    'is_valid': False,
-                    'score': 0.0,
-                    'justificativa': f"Natureza {natureza_codigo} não encontrada na base de conhecimento.",
-                    'natureza_info': None
+            # Formatação do nome da natureza (se disponível)
+            natureza_nome = ""
+            if natureza_codigo in self.natureza_map:
+                natureza_nome = self.natureza_map[natureza_codigo].get('nome', '')
+            
+            # Construção da query para o modelo
+            query = f"""
+            Avalie se a natureza de despesa "{natureza_codigo}{' - ' + natureza_nome if natureza_nome else ''}" 
+            é adequada para a seguinte descrição:
+            
+            Descrição da despesa: {descricao}
+            
+            Com base no Manual de Contabilidade Aplicada ao Setor Público (MCASP), 
+            forneça uma avaliação detalhada sobre a adequação desta natureza para a descrição.
+            
+            Na sua resposta, inclua:
+            1. Se a natureza é adequada ou não (dê uma classificação clara: adequada, parcialmente adequada ou inadequada)
+            2. Uma justificativa detalhada com base no MCASP
+            3. Um score numérico de adequação de 0 a 1, onde 1 significa totalmente adequada
+            4. Se a natureza não for adequada, sugira uma natureza mais apropriada se possível
+            
+            Responda em um formato estruturado que permita a extração fácil das informações.
+            """
+            
+            # Faz a consulta ao modelo
+            result = self.chain.invoke({"query": query})
+            
+            # Processa a resposta para extrair as informações estruturadas
+            response = result['result'] if isinstance(result, dict) and 'result' in result else result
+            
+            # Parseamento da resposta
+            response_lower = response.lower()
+            
+            # Determina se é válido
+            is_valid = False
+            if "adequada" in response_lower and not ("não adequada" in response_lower or "inadequada" in response_lower):
+                is_valid = True
+            elif "parcialmente adequada" in response_lower:
+                is_valid = True  # Consideramos parcialmente adequada como válida, mas com score menor
+            
+            # Tenta extrair um score numérico
+            score_match = re.search(r'score.*?(\d+[.,]\d+|\d+)', response_lower)
+            score = 0.5  # Valor padrão se não encontrar
+            
+            if score_match:
+                try:
+                    score_str = score_match.group(1).replace(',', '.')
+                    score = float(score_str)
+                    # Normaliza o score para 0-1 se estiver em outra escala
+                    if score > 1:
+                        score = score / 10 if score <= 10 else score / 100
+                except ValueError:
+                    logger.warning(f"Não foi possível converter o score '{score_match.group(1)}' para float")
+            
+            # Para naturezas parcialmente adequadas, ajusta o score
+            if "parcialmente adequada" in response_lower:
+                # Ajusta para um valor intermediário se não tiver um score explícito
+                if not score_match:
+                    score = 0.7
+            
+            # Tenta encontrar uma natureza sugerida
+            best_match = None
+            
+            # Procura por padrões como "3.3.90.30" no texto da resposta
+            alternative_codes = re.findall(r'\d\.\d\.\d{1,2}\.\d{1,2}', response)
+            
+            # Filtra o código original
+            alternative_codes = [code for code in alternative_codes if code != natureza_codigo]
+            
+            if alternative_codes:
+                # Pega o primeiro código alternativo
+                alt_code = alternative_codes[0]
+                
+                # Tenta encontrar o nome do código
+                alt_name = ""
+                if alt_code in self.natureza_map:
+                    alt_name = self.natureza_map[alt_code].get('nome', '')
+                else:
+                    # Tenta extrair o nome do texto da resposta
+                    name_pattern = f"{alt_code}\\s*[-–]\\s*([^\n.,]+)"
+                    name_match = re.search(name_pattern, response)
+                    if name_match:
+                        alt_name = name_match.group(1).strip()
+                
+                best_match = {
+                    'codigo': alt_code,
+                    'similarity': 0.9,  # Valor simbólico, já que foi sugerido pelo modelo
+                    'info': {
+                        'codigo': alt_code,
+                        'nome': alt_name
+                    }
                 }
             
-            # Obtém informações da natureza
-            natureza_info = self.natureza_map[natureza_codigo]
+            # Extrai a justificativa, considerando o texto após "justificativa" ou "justificação"
+            justificativa = response
+            justificativa_match = re.search(r'(?:justificativa|justificação).*?:(.*?)(?:\d\.|$)', response_lower, re.DOTALL)
+            if justificativa_match:
+                justificativa = justificativa_match.group(1).strip()
             
-            # Gera embedding para a descrição
-            try:
-                query_embedding = self.embedding_model.get_embeddings([descricao])
-            except Exception as e:
-                self.logger.error(f"Erro ao gerar embedding para consulta: {str(e)}")
-                # Tenta usar o modelo local como fallback
-                try:
-                    from sentence_transformers import SentenceTransformer
-                    model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-                    query_embedding = model.encode([descricao], show_progress_bar=False, convert_to_numpy=True)
-                    self.logger.info("Embedding de consulta gerado com modelo local de fallback")
-                except Exception as fallback_error:
-                    self.logger.error(f"Erro no fallback para modelo local: {str(fallback_error)}")
-                    # Se tudo falhar, retorna uma avaliação neutra
-                    return {
-                        'is_valid': True,  # Assume válido para não bloquear o fluxo
-                        'score': 0.5,      # Score neutro
-                        'justificativa': f"Não foi possível avaliar a adequação da natureza {natureza_codigo} devido a erros no processamento.",
-                        'natureza_info': natureza_info
-                    }
-# Busca pelas naturezas mais relevantes para a descrição
-            from sklearn.preprocessing import normalize
-            from sklearn.metrics.pairwise import cosine_similarity
-            
-            # Normaliza os embeddings para comparação de similaridade de cosseno
-            normalized_query = normalize(query_embedding)
-            normalized_embeddings = normalize(self.embeddings)
-            
-            # Calcula a similaridade entre a descrição e todas as naturezas
-            similarities = cosine_similarity(normalized_query, normalized_embeddings)[0]
-            
-            # Encontra o índice da natureza solicitada
-            natureza_idx = None
-            for i, text in enumerate(self.texts):
-                if natureza_codigo in text:
-                    natureza_idx = i
-                    break
-            
-            if natureza_idx is None:
-                self.logger.warning(f"Índice para natureza {natureza_codigo} não encontrado nos embeddings")
-                # Busca alternativa mais flexível
-                for i, text in enumerate(self.texts):
-                    if re.search(re.escape(natureza_codigo.replace('.', r'\.')), text):
-                        natureza_idx = i
-                        self.logger.info(f"Índice encontrado com busca flexível: {i}")
-                        break
-                
-                # Se ainda não encontrou, usa comparação de similaridade direta
-                if natureza_idx is None:
-                    natureza_embed = self.embedding_model.get_embeddings([natureza_info['texto_completo']])
-                    natureza_similarities = cosine_similarity(normalize(natureza_embed), normalized_embeddings)[0]
-                    natureza_idx = np.argmax(natureza_similarities)
-                    self.logger.info(f"Índice determinado por similaridade direta: {natureza_idx}")
-            
-            # Similaridade da natureza solicitada
-            natureza_similarity = similarities[natureza_idx] if natureza_idx is not None else 0.0
-            
-            # Encontra o índice da natureza mais similar
-            best_idx = np.argmax(similarities)
-            best_similarity = similarities[best_idx]
-            
-            # Determina o código da natureza mais similar
-            best_code = None
-            for code, info in self.natureza_map.items():
-                if info['texto_completo'] == self.texts[best_idx]:
-                    best_code = code
-                    break
-            
-            # Se não encontrou o código, busca por substring
-            if best_code is None:
-                for code in self.natureza_map.keys():
-                    if code in self.texts[best_idx]:
-                        best_code = code
-                        break
-            
-            # Fallback se ainda não encontrou
-            if best_code is None:
-                self.logger.warning(f"Não foi possível determinar o código da natureza mais similar")
-                # Usa o primeiro código como fallback
-                best_code = list(self.natureza_map.keys())[0] if self.natureza_map else natureza_codigo
-            
-            # Calcula um score relativo (quanto mais próximo de 1, melhor)
-            # Se a natureza solicitada for a mais similar, o score é 1.0
-            # Caso contrário, é a razão entre a similaridade da natureza solicitada e a melhor similaridade
-            if natureza_idx == best_idx:
-                score = 1.0
-                justificativa = f"A natureza {natureza_codigo} é a mais adequada para a descrição fornecida."
-                is_valid = True
-            else:
-                score = natureza_similarity / best_similarity if best_similarity > 0 else 0.0
-                
-                # Classifica a adequação
-                if score >= 0.9:
-                    is_valid = True
-                    justificativa = f"A natureza {natureza_codigo} é adequada para a descrição fornecida."
-                elif score >= 0.7:
-                    is_valid = True
-                    justificativa = f"A natureza {natureza_codigo} é aceitável para a descrição, mas {best_code} pode ser mais adequada."
-                else:
-                    is_valid = False
-                    justificativa = f"A natureza {natureza_codigo} não parece adequada para a descrição. A natureza {best_code} seria mais apropriada."
+            # Se a justificativa ainda for muito longa, tenta extrair um resumo
+            if len(justificativa) > 500:
+                justificativa = justificativa[:500] + "..."
             
             return {
                 'is_valid': is_valid,
                 'score': float(score),
                 'justificativa': justificativa,
-                'natureza_info': natureza_info,
-                'best_match': {
-                    'codigo': best_code,
-                    'similarity': float(best_similarity),
-                    'info': self.natureza_map.get(best_code)
-                } if best_code != natureza_codigo else None
+                'natureza_info': self.natureza_map.get(natureza_codigo, {'codigo': natureza_codigo, 'nome': natureza_nome}),
+                'best_match': best_match,
+                'full_response': response  # Incluído para referência e depuração
             }
             
         except Exception as e:
-            self.logger.error(f"Erro ao avaliar natureza: {str(e)}")
-            self.logger.error(f"Traceback completo:\n{traceback.format_exc()}")
+            logger.error(f"Erro ao avaliar natureza: {str(e)}")
+            logger.error(traceback.format_exc())
             # Retorna um resultado neutro para não interromper o fluxo
             return {
                 'is_valid': True,  # Assume válido por padrão em caso de erro
                 'score': 0.5,
                 'justificativa': f"Ocorreu um erro ao avaliar a natureza. Recomendamos revisão manual.",
-                'natureza_info': self.natureza_map.get(natureza_codigo),
+                'natureza_info': self.natureza_map.get(natureza_codigo, {'codigo': natureza_codigo, 'nome': ''}),
                 'error': str(e)
             }
-    def save_model(self) -> bool:
+    
+    def generate_response(self, query: str, chat_history: List[Dict[str, str]] = None) -> str:
+        """
+        Método obrigatório para compatibilidade com a classe base AIModel.
+        Gera uma resposta para a consulta do usuário.
+        
+        Args:
+            query: Consulta do usuário
+            chat_history: Histórico da conversa (opcional)
+            
+        Returns:
+            str: Resposta gerada pelo modelo
+        """
+        if not self.is_trained or self.chain is None:
+            return "O avaliador de natureza ainda não foi treinado. Por favor, realize o treinamento primeiro."
+        
+        try:
+            # Converte o histórico para o formato esperado, se fornecido
+            history = []
+            if chat_history:
+                for msg in chat_history:
+                    if msg.get('role') == 'user':
+                        history.append({"role": "human", "content": msg.get('content', '')})
+                    elif msg.get('role') == 'assistant':
+                        history.append({"role": "ai", "content": msg.get('content', '')})
+            
+            # Usa a cadeia para responder à consulta
+            result = self.chain.invoke({"query": query})
+            
+            return result['result'] if isinstance(result, dict) and 'result' in result else result
+        
+        except Exception as e:
+            logger.error(f"Erro ao gerar resposta: {str(e)}")
+            return f"Desculpe, ocorreu um erro ao processar sua pergunta: {str(e)}"
+    
+    def save_model(self, model_name: str = None) -> bool:
         """
         Salva o modelo treinado.
         
+        Args:
+            model_name: Nome opcional para o modelo
+            
         Returns:
             bool: True se o salvamento foi bem-sucedido, False caso contrário
         """
-        if not self.is_trained:
-            self.logger.error("Tentativa de salvar modelo não treinado")
+        if not self.is_trained or self.vectorstore is None:
+            logger.error("Tentativa de salvar modelo não treinado")
             return False
         
         try:
-            # Cria diretório se não existir
-            os.makedirs(self.model_path, exist_ok=True)
+            # Define nome do modelo se não fornecido
+            if model_name is None:
+                model_name = f"natureza_evaluator_{self.model_type}"
             
-            # Salva informações básicas para reconstrução
+            # Caminho para salvar o modelo
+            model_dir = os.path.join(active_config.MODELS_DIR, model_name)
+            os.makedirs(model_dir, exist_ok=True)
+            
+            # Salva o vectorstore
+            vectorstore_dir = os.path.join(model_dir, "vectorstore")
+            os.makedirs(vectorstore_dir, exist_ok=True)
+            
+            # Usa o método save_local do FAISS
+            self.vectorstore.save_local(vectorstore_dir)
+            
+            # Salva o mapeamento de naturezas
+            natureza_path = os.path.join(model_dir, "natureza_map.json")
+            with open(natureza_path, 'w', encoding='utf-8') as f:
+                json.dump(self.natureza_map, f, ensure_ascii=False, indent=2)
+            
+            # Informações do modelo
             model_info = {
-                'embedding_provider': self.embedding_provider,
+                'model_type': self.model_type,
+                'model_name': self.model_name,
                 'created_at': datetime.now().isoformat(),
-                'natureza_count': len(self.natureza_map) if self.natureza_map else 0,
-                'texts_count': len(self.texts) if self.texts else 0,
-                'embeddings_shape': self.embeddings.shape if hasattr(self.embeddings, 'shape') else None
+                'natureza_count': len(self.natureza_map),
+                'embedding_type': 'openai' if self.model_type == 'openai' else 'huggingface'
             }
             
             # Salva informações do modelo
-            info_path = os.path.join(self.model_path, 'model_info.json')
+            info_path = os.path.join(model_dir, "model_info.json")
             with open(info_path, 'w', encoding='utf-8') as f:
                 json.dump(model_info, f, ensure_ascii=False, indent=2)
             
-            # Salva o mapeamento de naturezas
-            data_path = os.path.join(self.model_path, 'natureza_map.json')
-            with open(data_path, 'w', encoding='utf-8') as f:
-                # Converte para JSON serializável (remove objetos numpy)
-                json_map = {}
-                for codigo, info in self.natureza_map.items():
-                    json_map[codigo] = {k: v for k, v in info.items()}
-                json.dump(json_map, f, ensure_ascii=False, indent=2)
+            # Salva metadata em formato pickle para compatibilidade
+            metadata_path = os.path.join(model_dir, "metadata.pkl")
+            with open(metadata_path, 'wb') as f:
+                pickle.dump(model_info, f)
             
-            # Salva os embeddings e textos diretamente se não foram salvos pelo modelo de embedding
-            try:
-                embeddings_file = os.path.join(self.model_path, 'embeddings.npy')
-                np.save(embeddings_file, self.embeddings)
-                
-                texts_file = os.path.join(self.model_path, 'texts.json')
-                with open(texts_file, 'w', encoding='utf-8') as f:
-                    json.dump(self.texts, f, ensure_ascii=False, indent=2)
-                    
-                self.logger.info(f"Embeddings e textos salvos diretamente em {self.model_path}")
-            except Exception as e:
-                self.logger.warning(f"Erro ao salvar embeddings e textos diretamente: {str(e)}")
-                self.logger.info("Os embeddings podem ter sido salvos pelo modelo de embedding")
+            # Atualiza o caminho do modelo
+            self.model_path = model_dir
             
-            self.logger.info(f"Modelo salvo com sucesso em {self.model_path}")
+            logger.info(f"Modelo salvo com sucesso em {model_dir}")
             return True
             
         except Exception as e:
-            self.logger.error(f"Erro ao salvar modelo: {str(e)}")
-            self.logger.error(f"Traceback completo:\n{traceback.format_exc()}")
+            logger.error(f"Erro ao salvar modelo: {str(e)}")
+            logger.error(traceback.format_exc())
             return False
     
-    def load_model(self) -> bool:
+    def load_model(self, model_path: str = None) -> bool:
         """
         Carrega um modelo salvo anteriormente.
         
+        Args:
+            model_path: Caminho para o modelo. Se None, usa o caminho padrão.
+            
         Returns:
             bool: True se o carregamento foi bem-sucedido, False caso contrário
         """
         try:
-            # Verifica se os arquivos existem
-            info_path = os.path.join(self.model_path, 'model_info.json')
-            data_path = os.path.join(self.model_path, 'natureza_map.json')
+            # Define o caminho padrão se não fornecido
+            if model_path is None:
+                model_path = self.model_path
             
-            if not all(os.path.exists(p) for p in [info_path, data_path]):
-                # Se os arquivos específicos não existem, tenta carregar embeddings diretamente
-                embeddings, texts, metadata = self.embedding_model.load_embeddings()
-                if embeddings is not None and texts is not None and metadata is not None:
-                    if 'natureza_map' in metadata:
-                        self.embeddings = embeddings
-                        self.texts = texts
-                        self.natureza_map = metadata['natureza_map']
-                        self.is_trained = True
-                        self.logger.info(f"Modelo carregado dos embeddings com {len(self.texts)} textos")
-                        return True
-                
-                self.logger.warning(f"Arquivos do modelo não encontrados em {self.model_path}")
-                
-                # Tente carregar os embeddings e textos salvos diretamente
-                embeddings_file = os.path.join(self.model_path, 'embeddings.npy')
-                texts_file = os.path.join(self.model_path, 'texts.json')
-                
-                if os.path.exists(embeddings_file) and os.path.exists(texts_file):
-                    self.logger.info("Tentando carregar embeddings e textos diretos...")
-                    try:
-                        self.embeddings = np.load(embeddings_file)
-                        with open(texts_file, 'r', encoding='utf-8') as f:
-                            self.texts = json.load(f)
-                            
-                        # Se temos embeddings e textos mas não o mapa, tenta criar um mapa básico
-                        if not self.natureza_map:
-                            self.logger.info("Criando mapeamento básico a partir dos textos...")
-                            self.natureza_map = {}
-                            for text in self.texts:
-                                # Extrai o código do texto (assumindo formato padrão)
-                                match = re.search(r'(\d\.\d\.\d{1,2}\.\d{1,2})', text)
-                                if match:
-                                    codigo = match.group(1)
-                                    # Tenta extrair o nome
-                                    parts = text.split(' - ', 1)
-                                    nome = parts[1].split('\n')[0] if len(parts) > 1 else "Natureza de Despesa"
-                                    self.natureza_map[codigo] = {
-                                        'codigo': codigo,
-                                        'nome': nome,
-                                        'texto_completo': text
-                                    }
-                            
-                            self.logger.info(f"Criado mapeamento básico com {len(self.natureza_map)} naturezas")
-                            
-                        self.is_trained = True
-                        return True
-                    except Exception as e:
-                        self.logger.error(f"Erro ao carregar embeddings e textos diretos: {str(e)}")
-                
+            # Verifica se o diretório existe
+            if not os.path.exists(model_path):
+                logger.error(f"Caminho do modelo não existe: {model_path}")
                 return False
             
-            # Carrega informações do modelo
-            with open(info_path, 'r', encoding='utf-8') as f:
-                model_info = json.load(f)
+            # Tenta carregar informações do modelo
+            info_path = os.path.join(model_path, "model_info.json")
+            if os.path.exists(info_path):
+                with open(info_path, 'r', encoding='utf-8') as f:
+                    model_info = json.load(f)
+                    
+                # Atualiza as propriedades do modelo
+                if 'model_type' in model_info:
+                    self.model_type = model_info['model_type']
+                if 'model_name' in model_info:
+                    self.model_name = model_info['model_name']
+            
+            # Inicializa o LLM se ainda não estiver inicializado
+            if self.llm is None and not self.initialize():
+                logger.error("Falha ao inicializar o modelo de linguagem")
+                return False
             
             # Carrega o mapeamento de naturezas
-            with open(data_path, 'r', encoding='utf-8') as f:
-                self.natureza_map = json.load(f)
+            natureza_path = os.path.join(model_path, "natureza_map.json")
+            if os.path.exists(natureza_path):
+                with open(natureza_path, 'r', encoding='utf-8') as f:
+                    self.natureza_map = json.load(f)
             
-            # Carrega os embeddings pelo método normal
-            embeddings, texts, _ = self.embedding_model.load_embeddings()
-            if embeddings is not None and texts is not None:
-                self.embeddings = embeddings
-                self.texts = texts
-                self.logger.info(f"Embeddings carregados via modelo de embedding")
-            else:
-                # Tenta carregar os embeddings salvos diretamente
-                embeddings_file = os.path.join(self.model_path, 'embeddings.npy')
-                texts_file = os.path.join(self.model_path, 'texts.json')
+            # Carrega os embeddings apropriados para o modelo
+            embeddings = self._get_embeddings_model()
+            
+            # Caminho para o vectorstore
+            vectorstore_dir = os.path.join(model_path, "vectorstore")
+            if not os.path.exists(vectorstore_dir):
+                vectorstore_dir = model_path  # Compatibilidade com versões anteriores
+            
+            # Verifica se existe index.faiss
+            index_path = os.path.join(vectorstore_dir, "index.faiss")
+            if not os.path.exists(index_path):
+                logger.error(f"Arquivo index.faiss não encontrado em {vectorstore_dir}")
+                return False
+            
+            # Carrega o vectorstore
+            try:
+                self.vectorstore = FAISS.load_local(
+                    vectorstore_dir, 
+                    embeddings,
+                    allow_dangerous_deserialization=True
+                )
                 
-                if os.path.exists(embeddings_file) and os.path.exists(texts_file):
-                    self.logger.info("Carregando embeddings e textos diretos...")
-                    self.embeddings = np.load(embeddings_file)
-                    with open(texts_file, 'r', encoding='utf-8') as f:
-                        self.texts = json.load(f)
-                else:
-                    self.logger.warning("Embeddings não encontrados. O modelo pode não funcionar corretamente.")
-                    
-                    # Cria embeddings vazios para evitar erros
-                    # Cria embeddings vazios para evitar erros
-                    if self.natureza_map:
-                        self.logger.info("Criando textos a partir do mapeamento de naturezas...")
-                        self.texts = [info.get('texto_completo', f"{code} - Natureza de Despesa") 
-                                     for code, info in self.natureza_map.items()]
-                        
-                        # Tenta gerar embeddings em tempo real
-                        try:
-                            self.logger.info("Gerando embeddings a partir dos textos...")
-                            self.embeddings = self.embedding_model.get_embeddings(self.texts)
-                            self.logger.info(f"Embeddings gerados com sucesso")
-                        except Exception as e:
-                            self.logger.error(f"Erro ao gerar embeddings: {str(e)}")
-                            # Cria embeddings vazios com a dimensão correta
-                            embedding_dim = 1536 if self.embedding_provider == 'openai' else 384
-                            self.embeddings = np.zeros((len(self.texts), embedding_dim))
-            
-            self.is_trained = True
-            
-            self.logger.info(f"Modelo carregado com sucesso: {len(self.natureza_map)} naturezas")
-            return True
-            
+                # Cria cadeia de recuperação e pergunta
+                self.chain = RetrievalQA.from_chain_type(
+                    llm=self.llm,
+                    chain_type="stuff",
+                    retriever=self.vectorstore.as_retriever(
+                        search_kwargs={"k": 5}
+                    ),
+                    return_source_documents=True,
+                    verbose=True
+                )
+                
+                self.is_trained = True
+                self.model_path = model_path
+                
+                logger.info(f"Modelo carregado com sucesso de {model_path}")
+                return True
+                
+            except Exception as e:
+                logger.error(f"Erro ao carregar vectorstore: {str(e)}")
+                logger.error(traceback.format_exc())
+                return False
+                
         except Exception as e:
-            self.logger.error(f"Erro ao carregar modelo: {str(e)}")
-            self.logger.error(f"Traceback completo:\n{traceback.format_exc()}")
+            logger.error(f"Erro ao carregar modelo: {str(e)}")
+            logger.error(traceback.format_exc())
             return False
     
     def get_all_naturezas(self) -> List[Dict[str, Any]]:
         """
-        Retorna todas as naturezas disponíveis no modelo.
+        Retorna uma lista de todas as naturezas disponíveis no mapa.
         
         Returns:
-            List[Dict[str, Any]]: Lista de naturezas com seus detalhes
+            List[Dict[str, Any]]: Lista com informações de cada natureza
         """
-        if not self.is_trained:
-            # Tenta carregar o modelo
-            if not self.load_model():
-                self.logger.warning("Modelo não treinado. Retornando lista vazia.")
-                return []
-        
         result = []
         for codigo, info in self.natureza_map.items():
             result.append({
                 'codigo': codigo,
-                'nome': info['nome'],
+                'nome': info.get('nome', ''),
                 'descricao': info.get('descricao', '')
             })
         
         # Ordena por código
         result.sort(key=lambda x: x['codigo'])
-        return result
+        return result# models/natureza_evaluator.py
