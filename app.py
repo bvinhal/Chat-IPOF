@@ -575,28 +575,51 @@ def clean_temp_files():
 
     @app.route('/api/evaluate-natureza', methods=['POST'])
     def evaluate_natureza():
-        """Endpoint para avaliar se uma natureza é adequada para uma descrição."""
+        """Endpoint para avaliar uma ou mais naturezas para uma descrição."""
         data = request.json
         descricao = data.get('descricao', '')
-        natureza_codigo = data.get('natureza_codigo', '')
         
-        if not descricao or not natureza_codigo:
+        # Verifica se os dados necessários foram fornecidos
+        if not descricao:
             return jsonify({
                 'success': False,
-                'message': 'Descrição e código de natureza são obrigatórios'
+                'message': 'Descrição é obrigatória'
             }), 400
         
+        # Pode receber uma lista de candidatos ou um único código
+        candidatos = data.get('candidatos', [])
+        natureza_codigo = data.get('natureza_codigo', '')
+        
+        if not candidatos and not natureza_codigo:
+            return jsonify({
+                'success': False,
+                'message': 'É necessário fornecer candidatos ou natureza_codigo'
+            }), 400
+        
+        # Se forneceu apenas um código, converte para o formato de candidatos
+        if natureza_codigo and not candidatos:
+            candidatos = [{'codigo': natureza_codigo, 'confianca': 1.0}]
+        
         # Usa o controlador de chat se disponível, caso contrário usa o controlador de avaliador
-        if hasattr(chat_controller, 'evaluate_natureza'):
-            result = chat_controller.evaluate_natureza(descricao, natureza_codigo)
+        if hasattr(chat_controller, 'evaluate_natureza_candidates'):
+            result = chat_controller.evaluate_natureza_candidates(descricao, candidatos)
+        elif hasattr(natureza_evaluator_controller, 'evaluate_candidates'):
+            result = natureza_evaluator_controller.evaluate_candidates(descricao, candidatos)
         else:
-            result = natureza_evaluator_controller.evaluate_natureza(descricao, natureza_codigo)
+            # Fallback para a avaliação de um único código
+            if len(candidatos) == 1:
+                result = natureza_evaluator_controller.evaluate_natureza(descricao, candidatos[0]['codigo'])
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'Avaliação de múltiplos candidatos não implementada'
+                }), 501
         
         if result.get('success', False):
             return jsonify(result)
         else:
             return jsonify(result), 400
-            
+                        
     @app.route('/api/upload-mcasp', methods=['POST'])
     def upload_mcasp():
         """Endpoint para upload de arquivo PDF do MCASP."""

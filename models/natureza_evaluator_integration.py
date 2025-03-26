@@ -1,7 +1,7 @@
 # models/natureza_evaluator_integration.py
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from models.natureza_classifier import NaturezaClassifier
 from controllers.natureza_evaluator_controller import NaturezaEvaluatorController
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class NaturezaEvaluatorIntegration:
     """
     Classe que integra o classificador e o avaliador de natureza no fluxo de chat.
-    Permite validar se a natureza sugerida pelo classificador é adequada.
+    Permite validar as naturezas sugeridas pelo classificador, ignorando os dois últimos dígitos.
     """
     
     def __init__(self, embedding_provider: str = 'openai'):
@@ -38,6 +38,7 @@ class NaturezaEvaluatorIntegration:
     def process_message(self, message: str) -> Dict[str, Any]:
         """
         Processa uma mensagem para classificar e avaliar a natureza de despesa.
+        Versão melhorada que avalia múltiplos candidatos.
         
         Args:
             message: Mensagem do usuário
@@ -53,8 +54,8 @@ class NaturezaEvaluatorIntegration:
                     'message': 'Não é uma consulta sobre natureza de despesa'
                 }
             
-            # 1. Classifica a natureza
-            classifications = self.classifier.predict(message, top_k=3)
+            # 1. Classifica a natureza (obtém até 5 classificações)
+            classifications = self.classifier.predict(message, top_k=5)
             
             if not classifications:
                 return {
@@ -63,36 +64,39 @@ class NaturezaEvaluatorIntegration:
                     'message': 'Não foi possível classificar a natureza de despesa'
                 }
             
-            # 2. Avalia a natureza recomendada
-            top_classification = classifications[0]
-            evaluation = self.evaluator_controller.evaluate_natureza(
-                message, 
-                top_classification['codigo']
-            )
+            # 2. Avalia as classificações com o avaliador
+            evaluation = None
+            try:
+                evaluation = self.evaluator_controller.evaluate_candidates(message, classifications)
+            except Exception as e:
+                self.logger.error(f"Erro na avaliação dos candidatos: {str(e)}")
+                # Continua o processamento mesmo com erro na avaliação
             
             # 3. Retorna o resultado combinado
             result = {
                 'is_natureza_query': True,
                 'has_classifications': True,
                 'classifications': classifications,
-                'evaluation': evaluation.get('result') if evaluation.get('success', False) else None,
-                'top_classification': top_classification
+                'evaluation': evaluation.get('result') if evaluation and evaluation.get('success', False) else None,
+                'recommended': None
             }
             
-            # Adiciona uma mensagem baseada no resultado
-            if evaluation.get('success', False) and evaluation.get('result'):
+            # Define a recomendação baseada na avaliação ou nas classificações originais
+            if evaluation and evaluation.get('success', False) and evaluation.get('result'):
                 eval_result = evaluation['result']
-                if eval_result.get('is_valid', False):
-                    result['message'] = f"A natureza {top_classification['codigo']} foi classificada como adequada."
+                if eval_result.get('best_alternative'):
+                    result['recommended'] = eval_result['best_alternative']
+                    result['message'] = f"Nenhuma das naturezas pré-classificadas parece adequada. Sugestão: {eval_result['best_alternative']['codigo']}"
+                elif eval_result.get('recommended'):
+                    result['recommended'] = eval_result['recommended']
+                    result['message'] = f"A natureza mais adequada é {eval_result['recommended']['codigo']} (score: {eval_result['recommended'].get('score', 0):.2%})"
                 else:
-                    # Se a natureza não foi considerada adequada, verifica a sugestão do avaliador
-                    if eval_result.get('best_match'):
-                        best_match = eval_result['best_match']
-                        result['message'] = f"A natureza {top_classification['codigo']} pode não ser a mais adequada. Considere {best_match['codigo']}."
-                    else:
-                        result['message'] = f"A natureza {top_classification['codigo']} pode não ser a mais adequada para esta descrição."
+                    result['recommended'] = classifications[0]
+                    result['message'] = f"Avaliador não conseguiu determinar uma recomendação. Usando classificação de maior confiança: {classifications[0]['codigo']}"
             else:
-                result['message'] = f"Classificado como {top_classification['codigo']} (Não foi possível avaliar a adequação)."
+                # Se não conseguiu avaliar, usa a classificação de maior confiança
+                result['recommended'] = classifications[0]
+                result['message'] = f"Classificado como {classifications[0]['codigo']} (Não foi possível avaliar a adequação)"
             
             return result
             
@@ -130,6 +134,7 @@ class NaturezaEvaluatorIntegration:
     def format_response(self, result: Dict[str, Any]) -> str:
         """
         Formata o resultado em texto para resposta ao usuário.
+        Versão melhorada que apresenta avaliação de múltiplos candidatos.
         
         Args:
             result: Resultado do processamento
@@ -146,35 +151,61 @@ class NaturezaEvaluatorIntegration:
         # Obtém classificações e avaliação
         classifications = result.get('classifications', [])
         evaluation = result.get('evaluation')
+        recommended = result.get('recommended')
         
         # Formata a resposta
         response = "**Análise de Natureza de Despesa:**\n\n"
         
-        # Adiciona a classificação principal
-        top = classifications[0]
-        response += f"A natureza de despesa sugerida é **{top['codigo']} - {top['nome']}**\n"
-        response += f"(Confiança: {top['confianca']:.2%})\n\n"
-        
-        # Adiciona a avaliação, se disponível
-        if evaluation:
-            response += f"**Avaliação da adequação:**\n"
-            response += f"{evaluation['justificativa']}\n\n"
+        # Adiciona a natureza recomendada
+        if recommended:
+            codigo = recommended.get('codigo', '')
+            nome = recommended.get('nome', '')
             
-            # Se houver uma alternativa melhor sugerida pelo avaliador
-            if not evaluation['is_valid'] and evaluation.get('best_match'):
-                best = evaluation['best_match']
-                response += f"**Sugestão alternativa:** {best['codigo']}"
-                if best['info'] and 'nome' in best['info']:
-                    response += f" - {best['info']['nome']}"
-                response += f" (Similaridade: {best['similarity']:.2%})\n\n"
+            if not nome and 'codigo' in recommended:
+                # Tenta encontrar o nome em outras estruturas
+                for c in classifications:
+                    if c.get('codigo') == codigo:
+                        nome = c.get('nome', '')
+                        break
+            
+            response += f"A natureza de despesa recomendada é **{codigo}"
+            if nome:
+                response += f" - {nome}"
+            response += "**\n\n"
+            
+            # Adiciona informação sobre o score se disponível
+            if 'score' in recommended:
+                response += f"Score: {recommended['score']:.2%}\n\n"
         
-        # Adiciona outras classificações
-        if len(classifications) > 1:
-            response += "**Outras classificações possíveis:**\n\n"
-            for i, classification in enumerate(classifications[1:], 2):
+        # Adiciona a justificativa, se disponível
+        if evaluation and evaluation.get('justificativa'):
+            response += f"**Justificativa:**\n{evaluation['justificativa']}\n\n"
+        
+        # Adiciona o ranking de naturezas, se disponível
+        if evaluation and evaluation.get('ranking'):
+            response += "**Ranking das naturezas candidatas:**\n\n"
+            for i, item in enumerate(evaluation['ranking'], 1):
+                codigo = item.get('codigo', '')
+                nome = item.get('nome', '')
+                score = item.get('score', 0)
+                
+                response += f"{i}. **{codigo}"
+                if nome:
+                    response += f" - {nome}"
+                response += f"** (Score: {score:.2%})\n"
+            
+            response += "\n"
+        
+        # Se não houver avaliação mas tiver classificações, mostra as classificações originais
+        elif classifications and len(classifications) > 1:
+            response += "**Naturezas classificadas (sem avaliação):**\n\n"
+            for i, classification in enumerate(classifications, 1):
                 response += f"{i}. **{classification['codigo']} - {classification['nome']}**\n"
                 response += f"   Confiança: {classification['confianca']:.2%}\n"
+            
+            response += "\n"
         
-        response += "\nEsta análise combina classificação e avaliação da natureza de despesa com base no MCASP."
+        response += "Esta análise combina classificação automática e avaliação da natureza de despesa com base no MCASP, considerando apenas os níveis 'c.g.mm.ee' e ignorando os desdobramentos."
         
         return response
+        

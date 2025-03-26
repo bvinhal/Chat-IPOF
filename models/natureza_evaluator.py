@@ -340,8 +340,7 @@ class NaturezaEvaluator(AIModel):
     
     def _extract_natureza_info(self, documents: List[Any]) -> None:
         """
-        Extrai informações básicas sobre naturezas de despesa para referência.
-        Isso não é o sistema principal de avaliação, apenas um suporte adicional.
+        Extrai informações detalhadas sobre naturezas de despesa, considerando a estrutura hierárquica.
         
         Args:
             documents: Lista de documentos carregados
@@ -355,8 +354,49 @@ class NaturezaEvaluator(AIModel):
                 if hasattr(doc, 'page_content'):
                     all_text += doc.page_content + "\n\n"
             
-            # Procura por padrões como "3.3.90.30 - Material de Consumo"
-            natureza_pattern = r'(\d\.\d\.\d{1,2}\.\d{1,2})\s*[-–]\s*([^\n]+)'
+            # Procura por padrões mais específicos da estrutura de classificação
+            # Busca padrões para categorias econômicas
+            categoria_pattern = r'([1-4])\s*[-–]\s*([^\.]+?)(?=\n|\d\s*[-–])'
+            categoria_matches = re.finditer(categoria_pattern, all_text)
+            
+            categorias = {}
+            for match in categoria_matches:
+                codigo = match.group(1).strip()
+                nome = match.group(2).strip()
+                categorias[codigo] = nome
+                
+            # Busca padrões para grupos de natureza
+            grupo_pattern = r'([1-4]\.[1-9])\s*[-–]\s*([^\.]+?)(?=\n|\d\.\d\s*[-–])'
+            grupo_matches = re.finditer(grupo_pattern, all_text)
+            
+            grupos = {}
+            for match in grupo_matches:
+                codigo = match.group(1).strip()
+                nome = match.group(2).strip()
+                grupos[codigo] = nome
+                
+            # Busca padrões para modalidades de aplicação
+            modalidade_pattern = r'([1-4]\.[1-9]\.\d{2})\s*[-–]\s*([^\.]+?)(?=\n|\d\.\d\.\d{2}\s*[-–])'
+            modalidade_matches = re.finditer(modalidade_pattern, all_text)
+            
+            modalidades = {}
+            for match in modalidade_matches:
+                codigo = match.group(1).strip()
+                nome = match.group(2).strip()
+                modalidades[codigo] = nome
+                
+            # Busca padrões para elementos de despesa (até quatro níveis)
+            elemento_pattern = r'([1-4]\.[1-9]\.\d{2}\.\d{2})\s*[-–]\s*([^\.]+?)(?=\n|\d\.\d\.\d{2}\.\d{2}\s*[-–])'
+            elemento_matches = re.finditer(elemento_pattern, all_text)
+            
+            elementos = {}
+            for match in elemento_matches:
+                codigo = match.group(1).strip()
+                nome = match.group(2).strip()
+                elementos[codigo] = nome
+            
+            # Procura por padrões completos (incluindo desdobramentos)
+            natureza_pattern = r'(\d\.\d\.\d{2}\.\d{2}(?:\.\d{2})?)\s*[-–]\s*([^\n]+)'
             matches = re.finditer(natureza_pattern, all_text)
             
             # Mapeia códigos para nomes
@@ -364,28 +404,58 @@ class NaturezaEvaluator(AIModel):
                 codigo = match.group(1).strip()
                 nome = match.group(2).strip()
                 
+                # Normaliza o código para ignorar os dois últimos dígitos (dd)
+                codigo_norm = codigo
+                partes = codigo.split('.')
+                if len(partes) > 4:  # Se tiver o desdobramento
+                    codigo_norm = '.'.join(partes[:4])  # Mantém apenas c.g.mm.ee
+                
                 # Registra a natureza no mapa
-                self.natureza_map[codigo] = {
-                    'codigo': codigo,
-                    'nome': nome
+                self.natureza_map[codigo_norm] = {
+                    'codigo': codigo_norm,
+                    'nome': nome,
+                    'codigo_completo': codigo,
+                    'categoria': partes[0] if len(partes) > 0 else "",
+                    'grupo': '.'.join(partes[:2]) if len(partes) > 1 else "",
+                    'modalidade': '.'.join(partes[:3]) if len(partes) > 2 else "",
+                    'elemento': '.'.join(partes[:4]) if len(partes) > 3 else "",
+                    'desdobramento': partes[4] if len(partes) > 4 else ""
                 }
+            
+            # Combina todas as estruturas extraídas
+            for codigo, nome in categorias.items():
+                self.natureza_map[codigo] = {'codigo': codigo, 'nome': nome, 'tipo': 'categoria'}
+                
+            for codigo, nome in grupos.items():
+                self.natureza_map[codigo] = {'codigo': codigo, 'nome': nome, 'tipo': 'grupo'}
+                
+            for codigo, nome in modalidades.items():
+                self.natureza_map[codigo] = {'codigo': codigo, 'nome': nome, 'tipo': 'modalidade'}
+                
+            for codigo, nome in elementos.items():
+                if codigo not in self.natureza_map:  # Não sobrescrever se já existe com info completa
+                    self.natureza_map[codigo] = {'codigo': codigo, 'nome': nome, 'tipo': 'elemento'}
             
             # Se não encontrou naturezas, cria algumas básicas para referência
             if not self.natureza_map:
-                logger.warning("Não foi possível extrair naturezas diretamente. Criando mapa básico de referência.")
+                logger.warning("Não foi possível extrair naturezas. Criando mapa básico de referência.")
                 basic_naturezas = {
+                    '3': 'Despesas Correntes',
+                    '4': 'Despesas de Capital',
+                    '3.3': 'Outras Despesas Correntes',
+                    '4.4': 'Investimentos',
+                    '3.3.90': 'Aplicações Diretas',
+                    '4.4.90': 'Aplicações Diretas',
                     '3.3.90.30': 'Material de Consumo',
                     '3.3.90.39': 'Outros Serviços de Terceiros - Pessoa Jurídica',
                     '4.4.90.52': 'Equipamentos e Material Permanente'
                 }
                 
                 for codigo, nome in basic_naturezas.items():
-                    self.natureza_map[codigo] = {
-                        'codigo': codigo,
-                        'nome': nome
-                    }
+                    self.natureza_map[codigo] = {'codigo': codigo, 'nome': nome}
             
             logger.info(f"Extraídas {len(self.natureza_map)} naturezas de despesa para referência")
+            
         except Exception as e:
             logger.error(f"Erro ao extrair informações de natureza: {str(e)}")
             logger.error(traceback.format_exc())
@@ -393,11 +463,12 @@ class NaturezaEvaluator(AIModel):
     def evaluate(self, descricao: str, natureza_codigo: str) -> Dict[str, Any]:
         """
         Avalia se uma natureza de despesa é adequada para uma descrição.
+        Versão modificada para normalizar o código, desconsiderando os dois últimos dígitos.
         
         Args:
             descricao: Descrição da despesa
             natureza_codigo: Código da natureza a ser avaliada
-            
+                
         Returns:
             Dict[str, Any]: Resultado da avaliação com score e justificativa
         """
@@ -411,10 +482,16 @@ class NaturezaEvaluator(AIModel):
                     raise ValueError("Modelo não treinado e não foi possível treinar automaticamente")
         
         try:
+            # Normalizar o código (remover os últimos dois dígitos - dd)
+            partes = natureza_codigo.split('.')
+            codigo_norm = natureza_codigo
+            if len(partes) > 4:  # Se tiver o desdobramento
+                codigo_norm = '.'.join(partes[:4])  # Mantém apenas c.g.mm.ee
+            
             # Formatação do nome da natureza (se disponível)
             natureza_nome = ""
-            if natureza_codigo in self.natureza_map:
-                natureza_nome = self.natureza_map[natureza_codigo].get('nome', '')
+            if codigo_norm in self.natureza_map:
+                natureza_nome = self.natureza_map[codigo_norm].get('nome', '')
             
             # Construção da query para o modelo
             query = f"""
@@ -425,6 +502,8 @@ class NaturezaEvaluator(AIModel):
             
             Com base no Manual de Contabilidade Aplicada ao Setor Público (MCASP), 
             forneça uma avaliação detalhada sobre a adequação desta natureza para a descrição.
+            IMPORTANTE: Desconsidere os dois últimos dígitos (dd) do código ao fazer a avaliação,
+            considerando apenas a estrutura c.g.mm.ee (categoria econômica, grupo, modalidade, elemento).
             
             Na sua resposta, inclua:
             1. Se a natureza é adequada ou não (dê uma classificação clara: adequada, parcialmente adequada ou inadequada)
@@ -477,8 +556,9 @@ class NaturezaEvaluator(AIModel):
             # Procura por padrões como "3.3.90.30" no texto da resposta
             alternative_codes = re.findall(r'\d\.\d\.\d{1,2}\.\d{1,2}', response)
             
-            # Filtra o código original
-            alternative_codes = [code for code in alternative_codes if code != natureza_codigo]
+            # Filtra o código original e sua versão normalizada
+            alternative_codes = [code for code in alternative_codes 
+                                if code != natureza_codigo and code != codigo_norm]
             
             if alternative_codes:
                 # Pega o primeiro código alternativo
@@ -486,8 +566,9 @@ class NaturezaEvaluator(AIModel):
                 
                 # Tenta encontrar o nome do código
                 alt_name = ""
-                if alt_code in self.natureza_map:
-                    alt_name = self.natureza_map[alt_code].get('nome', '')
+                alt_code_norm = '.'.join(alt_code.split('.')[:4])  # Normaliza
+                if alt_code_norm in self.natureza_map:
+                    alt_name = self.natureza_map[alt_code_norm].get('nome', '')
                 else:
                     # Tenta extrair o nome do texto da resposta
                     name_pattern = f"{alt_code}\\s*[-–]\\s*([^\n.,]+)"
@@ -518,7 +599,7 @@ class NaturezaEvaluator(AIModel):
                 'is_valid': is_valid,
                 'score': float(score),
                 'justificativa': justificativa,
-                'natureza_info': self.natureza_map.get(natureza_codigo, {'codigo': natureza_codigo, 'nome': natureza_nome}),
+                'natureza_info': self.natureza_map.get(codigo_norm, {'codigo': codigo_norm, 'nome': natureza_nome}),
                 'best_match': best_match,
                 'full_response': response  # Incluído para referência e depuração
             }
@@ -534,7 +615,7 @@ class NaturezaEvaluator(AIModel):
                 'natureza_info': self.natureza_map.get(natureza_codigo, {'codigo': natureza_codigo, 'nome': ''}),
                 'error': str(e)
             }
-    
+                
     def generate_response(self, query: str, chat_history: List[Dict[str, str]] = None) -> str:
         """
         Método obrigatório para compatibilidade com a classe base AIModel.
@@ -744,3 +825,188 @@ class NaturezaEvaluator(AIModel):
         # Ordena por código
         result.sort(key=lambda x: x['codigo'])
         return result# models/natureza_evaluator.py
+
+    def evaluate_candidates(self, descricao: str, candidatos: List[Dict[str, Any]]) -> Dict[str, Any]:
+
+        """
+        Avalia múltiplos candidatos de natureza de despesa para uma descrição.
+        
+        Args:
+            descricao: Descrição da despesa
+            candidatos: Lista de dicionários, cada um com 'codigo' e 'confianca'
+                
+        Returns:
+            Dict[str, Any]: Resultado da avaliação com candidatos ranqueados e recomendação
+        """
+        if not self.is_trained:
+            if not self.load_model():
+                raise ValueError("Modelo não treinado e não foi possível carregar.")
+        
+        try:
+            # Normalizar os códigos de candidatos (remover os últimos dois dígitos - dd)
+            candidatos_normalizados = []
+            for candidato in candidatos:
+                codigo = candidato['codigo']
+                # Divide por pontos e remove os últimos dois dígitos se houver
+                partes = codigo.split('.')
+                if len(partes) >= 4:  # Certifica que tem pelo menos c.g.mm.ee
+                    codigo_norm = '.'.join(partes[:4])  # Mantém apenas c.g.mm.ee
+                else:
+                    codigo_norm = codigo  # Mantém o código original se não tiver formato completo
+                
+                candidatos_normalizados.append({
+                    'codigo_original': codigo,
+                    'codigo_norm': codigo_norm,
+                    'confianca': candidato.get('confianca', 0.0),
+                    'nome': candidato.get('nome', '')
+                })
+            
+            # Construir a consulta para o modelo
+            candidatos_str = ""
+            for i, cand in enumerate(candidatos_normalizados, 1):
+                nome = cand['nome'] if cand['nome'] else self.natureza_map.get(cand['codigo_norm'], {}).get('nome', '')
+                candidatos_str += f"{i}. {cand['codigo_original']} - {nome} (Confiança: {cand['confianca']:.2%})\n"
+            
+            query = f"""
+            Avalie qual das seguintes naturezas de despesa é mais adequada para a descrição:
+            
+            Descrição da despesa: {descricao}
+            
+            Candidatos de natureza de despesa:
+            {candidatos_str}
+            
+            Com base no Manual de Contabilidade Aplicada ao Setor Público (MCASP), 
+            forneça uma avaliação detalhada sobre qual natureza é mais adequada. 
+            IMPORTANTE: Desconsidere os dois últimos dígitos (dd) do código ao fazer a avaliação,
+            considerando apenas a estrutura c.g.mm.ee (categoria econômica, grupo, modalidade, elemento).
+            
+            Na sua resposta, inclua:
+            1. Um ranking das naturezas candidatas, da mais adequada para a menos adequada
+            2. Uma justificativa detalhada para a sua escolha
+            3. Se nenhuma das naturezas candidatas for adequada, sugira uma natureza mais apropriada
+            especificando o código c.g.mm.ee
+            
+            Responda em um formato estruturado que permita a extração fácil das informações.
+            """
+            
+            # Faz a consulta ao modelo
+            result = self.chain.invoke({"query": query})
+            
+            # Processa a resposta
+            response = result['result'] if isinstance(result, dict) and 'result' in result else result
+            
+            # Tentar extrair o ranking
+            ranking = []
+            
+            # Procura por padrões como "1. 3.3.90.30"
+            for i, cand in enumerate(candidatos_normalizados):
+                # Verifica se o candidato é mencionado como melhor ou mais adequado
+                position = -1
+                padrao = f"{i+1}\.\s*{re.escape(cand['codigo_original'])}"
+                match = re.search(padrao, response)
+                if match:
+                    position = i+1
+                
+                # Procura por termos positivos associados ao candidato
+                termos_positivos = [
+                    "mais adequad[ao]", "melhor", "recomendad[ao]", 
+                    "mais apropriada", "correta", "ideal"
+                ]
+                
+                score = cand['confianca']  # Começamos com a confiança original
+                for termo in termos_positivos:
+                    if re.search(f"{re.escape(cand['codigo_original'])}.*?{termo}", response, re.IGNORECASE) or \
+                    re.search(f"{termo}.*?{re.escape(cand['codigo_original'])}", response, re.IGNORECASE):
+                        score += 0.1  # Aumenta o score por cada termo positivo associado
+                
+                ranking.append({
+                    'codigo': cand['codigo_original'],
+                    'codigo_norm': cand['codigo_norm'],
+                    'score': min(score, 1.0),  # Cap em 1.0
+                    'position': position,
+                    'nome': cand['nome'],
+                    'confianca_original': cand['confianca']
+                })
+            
+            # Ordena o ranking com base no score e posição
+            ranking.sort(key=lambda x: (-x['score'], x['position'] if x['position'] > 0 else 999))
+            
+            # Procura por uma natureza alternativa sugerida
+            alternative_codes = re.findall(r'\d\.\d\.\d{1,2}\.\d{1,2}', response)
+            
+            # Filtra códigos de candidatos
+            candidatos_codigos = [c['codigo_original'] for c in candidatos_normalizados]
+            candidate_norm_codes = [c['codigo_norm'] for c in candidatos_normalizados]
+            alternative_codes = [code for code in alternative_codes 
+                                if code not in candidatos_codigos and
+                                code not in candidate_norm_codes]
+            
+            best_alternative = None
+            if alternative_codes:
+                alt_code = alternative_codes[0]
+                
+                # Tenta encontrar o nome do código
+                alt_name = ""
+                alt_code_norm = '.'.join(alt_code.split('.')[:4])  # Normaliza
+                if alt_code_norm in self.natureza_map:
+                    alt_name = self.natureza_map[alt_code_norm].get('nome', '')
+                else:
+                    # Tenta extrair o nome do texto da resposta
+                    name_pattern = f"{alt_code}\\s*[-–]\\s*([^\n.,]+)"
+                    name_match = re.search(name_pattern, response)
+                    if name_match:
+                        alt_name = name_match.group(1).strip()
+                
+                best_alternative = {
+                    'codigo': alt_code,
+                    'codigo_norm': alt_code_norm,
+                    'score': 0.9,  # Score padrão para alternativa sugerida
+                    'nome': alt_name,
+                    'sugerido_pelo_modelo': True
+                }
+            
+            # Extrai a justificativa
+            justificativa = response
+            justificativa_match = re.search(r'(?:justificativa|justificação).*?:(.*?)(?:\d\.|$)', response.lower(), re.DOTALL)
+            if justificativa_match:
+                justificativa = justificativa_match.group(1).strip()
+            
+            # Se não encontrou uma justificativa clara, usa um trecho do texto
+            if not justificativa or len(justificativa) < 50:
+                justificativa = response[:500] + "..." if len(response) > 500 else response
+            
+            # Determina a recomendação final
+            recommended = None
+            if ranking and ranking[0]['score'] >= 0.7:
+                recommended = ranking[0]
+            elif best_alternative:
+                recommended = best_alternative
+            elif ranking:
+                recommended = ranking[0]  # Fallback para o melhor ranqueado
+            
+            # Monta o resultado final
+            resultado = {
+                'ranking': ranking,
+                'justificativa': justificativa,
+                'best_alternative': best_alternative,
+                'recommended': recommended,
+                'full_response': response
+            }
+            
+            return resultado
+            
+        except Exception as e:
+            logger.error(f"Erro ao avaliar candidatos: {str(e)}")
+            logger.error(traceback.format_exc())
+            # Retorna um resultado com os candidatos originais ordenados por confiança
+            candidatos_ordenados = sorted(candidatos, key=lambda x: -x.get('confianca', 0))
+            return {
+                'ranking': [{'codigo': c['codigo'], 'score': c.get('confianca', 0)} for c in candidatos_ordenados],
+                'justificativa': f"Ocorreu um erro ao avaliar as naturezas. Recomendamos revisão manual.",
+                'best_alternative': None,
+                'recommended': candidatos_ordenados[0] if candidatos_ordenados else None,
+                'error': str(e)
+            }
+
+
+

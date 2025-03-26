@@ -367,3 +367,123 @@ class NaturezaEvaluatorController:
                 'success': False,
                 'message': f"Erro ao excluir avaliador: {str(e)}"
             }
+
+    def evaluate_candidates(self, descricao: str, candidatos: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Avalia múltiplos candidatos de natureza de despesa para uma descrição.
+        
+        Args:
+            descricao: Descrição da despesa
+            candidatos: Lista de dicionários, cada um com 'codigo' e 'confianca'
+            
+        Returns:
+            Dict[str, Any]: Resultado da avaliação
+        """
+        if self.active_evaluator is None:
+            self.logger.warning("Nenhum avaliador de natureza está ativo. Tentando carregar ou treinar...")
+            
+            # Tenta carregar um avaliador para qualquer provedor
+            for provider in [self.active_provider, 'claude', 'openai', 'gemini']:
+                if self._load_evaluator(provider):
+                    self.logger.info(f"Avaliador carregado para {provider}")
+                    break
+            
+            # Se ainda não tiver um avaliador, tenta treinar
+            if self.active_evaluator is None:
+                self.logger.info("Tentando treinar um avaliador...")
+                result = self.train_evaluator('claude')  # Usa claude como fallback seguro
+                
+                if not result['success']:
+                    return {
+                        'success': False,
+                        'message': "Nenhum avaliador de natureza está ativo e não foi possível treinar um novo."
+                    }
+        
+        try:
+            # Se houver um método específico para avaliar candidatos, use-o
+            if hasattr(self.active_evaluator, 'evaluate_candidates'):
+                result = self.active_evaluator.evaluate_candidates(descricao, candidatos)
+            else:
+                # Fallback: avalia cada candidato individualmente e os classifica
+                self.logger.warning("Método evaluate_candidates não encontrado. Usando fallback com avaliações individuais.")
+                resultado = []
+                
+                for candidato in candidatos:
+                    eval_result = self.active_evaluator.evaluate(descricao, candidato['codigo'])
+                    resultado.append({
+                        'codigo': candidato['codigo'],
+                        'score': eval_result.get('score', 0) * candidato.get('confianca', 1.0),  # Combina scores
+                        'nome': candidato.get('nome', eval_result.get('natureza_info', {}).get('nome', ''))
+                    })
+                
+                # Ordena por score
+                resultado.sort(key=lambda x: -x['score'])
+                
+                result = {
+                    'ranking': resultado,
+                    'justificativa': "Avaliação realizada através de análise individual de cada candidato.",
+                    'best_alternative': None,
+                    'recommended': resultado[0] if resultado else None
+                }
+            
+            return {
+                'success': True,
+                'result': result,
+                'provider': self.active_provider
+            }
+        except Exception as e:
+            self.logger.error(f"Erro ao avaliar naturezas: {str(e)}")
+            self.logger.error(f"Traceback completo:\n{traceback.format_exc()}")
+            
+            # Retorna um resultado ordenado pelos scores originais
+            candidatos_ordenados = sorted(candidatos, key=lambda x: -x.get('confianca', 0))
+            return {
+                'success': False,
+                'message': f"Erro ao avaliar naturezas: {str(e)}",
+                'result': {
+                    'ranking': candidatos_ordenados,
+                    'recommended': candidatos_ordenados[0] if candidatos_ordenados else None
+                }
+            }
+
+    def evaluate_natureza_candidates(self, descricao: str, candidatos: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Avalia se múltiplas naturezas de despesa são adequadas para uma descrição.
+        
+        Args:
+            descricao: Descrição da despesa
+            candidatos: Lista de candidatos, cada um contendo 'codigo' e 'confianca'
+            
+        Returns:
+            Dict[str, Any]: Resultado da avaliação
+        """
+        if not hasattr(self, 'natureza_evaluator_controller') or self.natureza_evaluator_controller is None:
+            return {
+                'success': False,
+                'message': "Avaliador de natureza não disponível"
+            }
+        
+        # Normaliza candidatos se necessário para garantir que têm o formato esperado
+        candidatos_normalizados = []
+        for c in candidatos:
+            # Garante que tem pelo menos código e confiança
+            candidato = {
+                'codigo': c.get('codigo', ''),
+                'confianca': c.get('confianca', 0.5)
+            }
+            
+            # Adiciona nome se existir
+            if 'nome' in c:
+                candidato['nome'] = c['nome']
+                
+            candidatos_normalizados.append(candidato)
+        
+        # Limita a no máximo 5 candidatos
+        if len(candidatos_normalizados) > 5:
+            candidatos_normalizados = sorted(
+                candidatos_normalizados, 
+                key=lambda x: -x.get('confianca', 0)
+            )[:5]
+        
+        # Chama o controlador de avaliador de natureza
+        return self.natureza_evaluator_controller.evaluate_candidates(descricao, candidatos_normalizados)

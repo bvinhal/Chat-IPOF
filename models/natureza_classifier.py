@@ -50,7 +50,7 @@ class NaturezaClassifier:
         self.knn_model = None
         self.code_name_mapping = {}
         self.is_trained = False
-    
+            
     def _create_embedding_model(self):
         """
         Cria o modelo de embedding apropriado.
@@ -178,21 +178,21 @@ class NaturezaClassifier:
     
     def predict(self, text: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """
-        Prediz as naturezas de despesa mais prováveis para um texto.
+        Prediz as naturezas de despesa mais prováveis para um texto e as avalia.
         
         Args:
             text: Texto para classificação
             top_k: Número de naturezas mais prováveis a retornar
-            
+                
         Returns:
-            List[Dict[str, Any]]: Lista de previsões ordenadas por confiança
+            List[Dict[str, Any]]: Lista de previsões ordenadas por confiança, incluindo avaliação
         """
         if not self.is_trained or self.knn_model is None:
             self.logger.error("Modelo não treinado. Execute train() primeiro.")
             raise ValueError("Modelo não treinado")
         
         try:
-            # Gera embedding para o texto de consulta
+            # Parte original: Gera embedding para o texto de consulta
             query_embedding = self.embedding_model.get_embeddings([text])
             
             # Normaliza o embedding
@@ -210,7 +210,7 @@ class NaturezaClassifier:
             
             # Obtém os códigos e textos correspondentes
             result_indices = indices[0]
-            results = []
+            classificacao_results = []
             
             for i, idx in enumerate(result_indices):
                 codigo = self.codigos[idx]
@@ -219,19 +219,84 @@ class NaturezaClassifier:
                 # Busca o nome correspondente ao código
                 nome = self.code_name_mapping.get(codigo, "Nome não encontrado")
                 
-                results.append({
+                classificacao_results.append({
                     'codigo': codigo,
                     'nome': nome,
                     'confianca': float(similarity),
                     'texto_referencia': self.texts[idx]
                 })
             
-            return results
+            # NOVO: Avaliação das classificações por meio do NaturezaEvaluator
+            try:
+                from models.natureza_evaluator import NaturezaEvaluator
+                
+                # Inicializa o avaliador com o mesmo embedding provider
+                avaliador = NaturezaEvaluator(self.embedding_provider)
+                if not avaliador.load_model():
+                    self.logger.warning("Não foi possível carregar o avaliador. Usando apenas classificação.")
+                    return classificacao_results
+                
+                # Avalia os candidatos
+                avaliacao_result = avaliador.evaluate_candidates(text, classificacao_results)
+                
+                # Atualiza as classificações com os resultados da avaliação
+                if avaliacao_result and 'ranking' in avaliacao_result:
+                    # Cria um mapeamento de código para classificação original
+                    codigo_to_classificacao = {item['codigo']: item for item in classificacao_results}
+                    
+                    # Prepara o resultado final combinando classificação e avaliação
+                    final_results = []
+                    
+                    # Adiciona os itens do ranking de avaliação na nova ordem
+                    for rank_item in avaliacao_result['ranking']:
+                        codigo = rank_item.get('codigo')
+                        if codigo in codigo_to_classificacao:
+                            # Combina o item original com dados da avaliação
+                            item_combinado = codigo_to_classificacao[codigo].copy()
+                            item_combinado['avaliacao_score'] = rank_item.get('score', 0)
+                            item_combinado['ranking_position'] = rank_item.get('position', -1)
+                            final_results.append(item_combinado)
+                    
+                    # Adiciona a melhor alternativa se existir e não estiver nas classificações originais
+                    if avaliacao_result.get('best_alternative'):
+                        alt = avaliacao_result['best_alternative']
+                        alt_codigo = alt.get('codigo')
+                        # Verifica se essa alternativa já não está nos resultados
+                        if alt_codigo and not any(r['codigo'] == alt_codigo for r in final_results):
+                            final_results.append({
+                                'codigo': alt_codigo,
+                                'nome': alt.get('nome', ''),
+                                'confianca': alt.get('score', 0.8),  # Confiança padrão para alternativas
+                                'texto_referencia': '',  # Não há texto de referência
+                                'avaliacao_score': alt.get('score', 0.8),
+                                'ranking_position': 0,  # Posição 0 indica que é uma alternativa sugerida
+                                'is_alternative': True
+                            })
+                    
+                    # Adiciona a justificativa ao primeiro item (mais recomendado)
+                    if final_results and 'justificativa' in avaliacao_result:
+                        final_results[0]['justificativa'] = avaliacao_result.get('justificativa', '')
+                    
+                    # Se o ranking estiver vazio, usa os resultados originais
+                    if not final_results:
+                        final_results = classificacao_results
+                    
+                    return final_results
+            
+            except Exception as e:
+                self.logger.error(f"Erro durante a avaliação: {str(e)}")
+                # Se houver erro na avaliação, retorna apenas as classificações originais
+                return classificacao_results
+            
+            # Se não conseguiu avaliar, retorna apenas as classificações originais
+            return classificacao_results
             
         except Exception as e:
             self.logger.error(f"Erro ao fazer previsão: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             raise
-    
+            
     def save_model(self) -> bool:
         """
         Salva o modelo treinado.
