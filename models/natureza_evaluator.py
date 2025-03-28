@@ -94,7 +94,7 @@ class NaturezaEvaluator(AIModel):
                 self.llm = ChatAnthropic(
                     model=self.model_name,
                     anthropic_api_key=api_key,
-                    temperature=0.2,
+                    temperature=0.0,
                     max_tokens=4096
                 )
                 
@@ -109,7 +109,7 @@ class NaturezaEvaluator(AIModel):
                 self.llm = ChatOpenAI(
                     model=self.model_name,
                     openai_api_key=api_key,
-                    temperature=0.2,
+                    temperature=0.0,
                     max_tokens=4096
                 )
                 
@@ -124,7 +124,7 @@ class NaturezaEvaluator(AIModel):
                 self.llm = ChatGoogleGenerativeAI(
                     model=self.model_name,
                     google_api_key=api_key,
-                    temperature=0.2,
+                    temperature=0.0,
                     max_output_tokens=4096
                 )
             
@@ -877,16 +877,26 @@ class NaturezaEvaluator(AIModel):
             
             Com base no Manual de Contabilidade Aplicada ao Setor Público (MCASP), 
             forneça uma avaliação detalhada sobre qual natureza é mais adequada. 
+
+            ATENÇÃO: Sua resposta deve se basear EXCLUSIVAMENTE nas informações do Manual de Contabilidade 
+            Aplicada ao Setor Público (MCASP).
+            NÃO invente, complete ou sugira códigos que não estejam explicitamente no MCASP.
+            Limite-se a códigos até o nível de elemento (c.g.mm.ee) sem subelemento.
+            Se você não tiver certeza, indique claramente que a informação não está disponível no MCASP.
+
             IMPORTANTE: Desconsidere os dois últimos dígitos (dd) do código ao fazer a avaliação,
             considerando apenas a estrutura c.g.mm.ee (categoria econômica, grupo, modalidade, elemento).
-            
+                        
             Na sua resposta, inclua:
             1. Um ranking das naturezas candidatas, da mais adequada para a menos adequada
-            2. Uma justificativa detalhada para a sua escolha
+            2. Uma justificativa baseada APENAS em texto explícito do MCASP
             3. Se nenhuma das naturezas candidatas for adequada, sugira uma natureza mais apropriada
-            especificando o código c.g.mm.ee
-            
+            especificando o código c.g.mm.ee, porém ela deve aparecer textualmente no MCASP
+
+            Para cada afirmação, indique a página ou seção do MCASP onde a informação foi encontrada.
+
             Responda em um formato estruturado que permita a extração fácil das informações.
+
             """
             
             # Faz a consulta ao modelo

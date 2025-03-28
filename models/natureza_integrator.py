@@ -149,7 +149,7 @@ class NaturezaIntegrator:
             # A natureza mais provável é a primeira previsão
             most_likely = predictions[0]
             result['recommended'] = most_likely
-            
+            '''
             # Se um modelo de IA foi fornecido, solicita validação
             if ai_model and hasattr(ai_model, 'generate_response'):
                 validation_query = self._create_validation_query(text, predictions)
@@ -168,7 +168,7 @@ class NaturezaIntegrator:
                         if pred['codigo'] == recommended_code:
                             result['recommended'] = pred
                             break
-            
+            '''
             return result
             
         except Exception as e:
