@@ -976,11 +976,35 @@ class NaturezaEvaluator(AIModel):
                 }
             
             # Extrai a justificativa
+            # Extrai a justificativa, que está no item 2 da resposta
             justificativa = response
-            justificativa_match = re.search(r'(?:justificativa|justificação).*?:(.*?)(?:\d\.|$)', response.lower(), re.DOTALL)
+
+            # Primeiro tenta encontrar um padrão numerado explícito "2." seguido de qualquer texto até o item "3." ou final
+            justificativa_pattern = r'(?:^|\n)\s*2\.?\s*(?:justificativa baseada APENAS em texto explícito do MCASP:|justificação)?.*?:?(.*?)(?:(?:^|\n)\s*3\.|\Z)'
+            justificativa_match = re.search(justificativa_pattern, response, re.IGNORECASE | re.DOTALL)
+
             if justificativa_match:
+                # Extrai o conteúdo do grupo capturado e limpa espaços extras
                 justificativa = justificativa_match.group(1).strip()
-            
+            else:
+                # Se não encontrar o padrão numerado, tenta buscar por seção de justificativa
+                alt_pattern = r'(?:justificativa|justificação).*?:(.*?)(?:(?:^|\n)\s*\d\.|\Z)'
+                alt_match = re.search(alt_pattern, response.lower(), re.DOTALL)
+                if alt_match:
+                    justificativa = alt_match.group(1).strip()
+
+            # Limpa linhas em branco e espaços extras
+            justificativa = re.sub(r'\n\s*\n', '\n', justificativa)
+
+            # Se a justificativa ainda for muito longa, tenta extrair um resumo
+            # mas tenta manter frases completas
+            if len(justificativa) > 500:
+                last_sentence_end = justificativa[:500].rfind('.')
+                if last_sentence_end > 0:
+                    justificativa = justificativa[:last_sentence_end + 1]
+                else:
+                    justificativa = justificativa[:500] + "..."
+                                
             # Se não encontrou uma justificativa clara, usa um trecho do texto
             if not justificativa or len(justificativa) < 50:
                 justificativa = response[:500] + "..." if len(response) > 500 else response

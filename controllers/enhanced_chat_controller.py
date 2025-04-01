@@ -91,7 +91,7 @@ class EnhancedChatController(ChatController):
         recommended = natureza_result.get('recommended', predictions[0] if predictions else None)
         
         # Adiciona o separador e o título da seção
-        formatted_response = " "# original_response + "\n\n---\n\n"
+        formatted_response = recommended.get('justificativa') + "\n\n---\n\n" # original_response + "\n\n---\n\n"
         formatted_response += "**Classificação de Natureza de Despesa:**\n\n"
         
         if recommended:
