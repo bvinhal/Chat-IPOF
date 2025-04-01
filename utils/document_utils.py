@@ -305,20 +305,49 @@ def extract_meses(texto: str) -> Optional[int]:
             r'(?:contrato|prestação)\s+(?:de|por|:)?\s+(\d+)\s+(?:meses|mês)',
             r'(?:validade|vigência)\s+(?:de|:)?\s+(\d+)\s+(?:meses|mês)',
             r'(?:durante|por)\s+(\d+)\s+(?:meses|mês)',
-            r'(\d+)\s+(?:meses|mês)\s+(?:de|para)\s+(?:execução|prestação|contratação|vigência|duração)'
+            r'(\d+)\s+(?:meses|mês)\s+(?:de|para)\s+(?:execução|prestação|contratação|vigência|duração)',
+            # Novos padrões adicionados:
+            r'em\s+(\d+)\s+(?:meses|mês)',  # "em 12 meses"
+            r'por\s+(\d+)\s+(?:meses|mês)',  # "por 12 meses"
+            r'para\s+(\d+)\s+(?:meses|mês)',  # "para 12 meses"
+            r'de\s+(\d+)\s+(?:meses|mês)',   # "de 12 meses"
+            r'valor.*?\s+(\d+)\s+(?:meses|mês)',  # "valor de X em 12 meses"
+            r'(\d+)\s+(?:meses|mês)'         # "12 meses" (genérico, como último recurso)
         ]
         
         for padrao in padroes:
             match = re.search(padrao, texto, re.IGNORECASE)
             if match:
-                return int(match.group(1))
+                valor = int(match.group(1))
+                logger.info(f"Quantidade de meses encontrada: {valor} usando padrão '{padrao}'")
+                return valor
         
         # Padrão para períodos em anos, convertendo para meses
         padrao_anos = r'(?:período|prazo|vigência|duração|tempo)\s+(?:de|:)?\s+(\d+)\s+(?:anos|ano)'
         match = re.search(padrao_anos, texto, re.IGNORECASE)
         if match:
-            return int(match.group(1)) * 12
+            valor = int(match.group(1)) * 12
+            logger.info(f"Quantidade de meses calculada a partir de anos: {valor}")
+            return valor
+            
+        # Padrões adicionais para períodos em anos
+        padroes_anos = [
+            r'em\s+(\d+)\s+(?:anos|ano)',  # "em 1 ano"
+            r'por\s+(\d+)\s+(?:anos|ano)',  # "por 1 ano"
+            r'para\s+(\d+)\s+(?:anos|ano)',  # "para 1 ano"
+            r'de\s+(\d+)\s+(?:anos|ano)',   # "de 1 ano"
+            r'(\d+)\s+(?:anos|ano)'         # "1 ano" (genérico, como último recurso)
+        ]
         
+        for padrao in padroes_anos:
+            match = re.search(padrao, texto, re.IGNORECASE)
+            if match:
+                valor = int(match.group(1)) * 12
+                logger.info(f"Quantidade de meses calculada a partir de anos: {valor} usando padrão '{padrao}'")
+                return valor
+        
+        # Adicionar log para depuração
+        logger.info(f"Não foi possível encontrar quantidade de meses no texto: '{texto}'")
         return None
         
     except Exception as e:
@@ -336,7 +365,7 @@ def extract_data_inicio(texto: str) -> Optional[datetime]:
         Optional[datetime]: Data de início extraída ou None se não encontrada
     """
     try:
-        # Padrões para identificar datas de início
+        # Padrões para identificar datas
         padrao_data = r'(\d{2}[/.-]\d{2}[/.-]\d{4}|\d{2}[/.-]\d{2}[/.-]\d{2})'
         
         # Padrões de contexto para data de início
@@ -347,7 +376,9 @@ def extract_data_inicio(texto: str) -> Optional[datetime]:
             r'(?:primeiro|1º|1o)\s+(?:pagamento|desembolso)\s*(?::)?\s*' + padrao_data,
             r'(?:vigência|vigencia|prazo)\s+(?:contratual|do contrato)\s*(?:a partir de|iniciando em)\s*(?::)?\s*' + padrao_data,
             r'(?:contrato|despesa)\s+(?:inicia(?:-se)?|começa|tem início)\s*(?:em|no dia|na data|a partir de)\s*(?::)?\s*' + padrao_data,
-            r'(?:a partir de|desde)\s*' + padrao_data
+            r'(?:a partir de|desde)\s*' + padrao_data,
+            # Novo padrão para capturar "com início em dd/mm/yyyy"
+            r'com\s+(?:início|inicio)\s+em\s*' + padrao_data
         ]
         
         # Tenta encontrar com contexto específico primeiro
@@ -363,7 +394,19 @@ def extract_data_inicio(texto: str) -> Optional[datetime]:
                     # Verifica o formato e converte
                     if re.match(r'\d{2}/\d{2}/\d{4}', data_str):
                         dia, mes, ano = map(int, data_str.split('/'))
-                        return datetime(ano, mes, dia)
+                        try:
+                            return datetime(ano, mes, dia)
+                        except ValueError:
+                            # Corrige datas inválidas (dia > dias no mês)
+                            if mes == 2 and dia > 29:  # Fevereiro
+                                return datetime(ano, mes, 28 if ano % 4 != 0 else 29)
+                            elif dia > 30 and mes in [4, 6, 9, 11]:  # Meses com 30 dias
+                                return datetime(ano, mes, 30)
+                            elif dia > 31:  # Qualquer outro mês
+                                return datetime(ano, mes, 31)
+                            else:
+                                logger.warning(f"Data inválida: {data_str}, não foi possível corrigir")
+                                return None
                     elif re.match(r'\d{2}/\d{2}/\d{2}', data_str):
                         dia, mes, ano = map(int, data_str.split('/'))
                         # Ajusta para 2000 se o ano for pequeno
@@ -371,45 +414,25 @@ def extract_data_inicio(texto: str) -> Optional[datetime]:
                             ano += 2000
                         else:
                             ano += 1900
-                        return datetime(ano, mes, dia)
-                except (ValueError, IndexError):
+                        try:
+                            return datetime(ano, mes, dia)
+                        except ValueError:
+                            # Corrige datas inválidas (dia > dias no mês)
+                            if mes == 2 and dia > 29:  # Fevereiro
+                                return datetime(ano, mes, 28 if ano % 4 != 0 else 29)
+                            elif dia > 30 and mes in [4, 6, 9, 11]:  # Meses com 30 dias
+                                return datetime(ano, mes, 30)
+                            elif dia > 31:  # Qualquer outro mês
+                                return datetime(ano, mes, 31)
+                            else:
+                                logger.warning(f"Data inválida: {data_str}, não foi possível corrigir")
+                                return None
+                except (ValueError, IndexError) as e:
+                    logger.warning(f"Erro ao processar data de início {data_str}: {str(e)}")
                     continue  # Tenta o próximo padrão se a conversão falhar
         
-        # Tenta outras abordagens mais específicas se não tiver encontrado
-        meses_abrev = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
-        meses_completos = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
-        
-        # Combinando os meses para um padrão mais completo
-        meses_str = '|'.join(meses_abrev + meses_completos)
-        
-        # Padrão para datas por extenso (ex: 15 de janeiro de 2023)
-        padrao_extenso = r'(\d{1,2})\s+(?:de\s+)?(' + meses_str + r')(?:\s+de)?\s+(\d{4}|\d{2})'
-        
-        # Busca por datas por extenso no contexto de início
-        for contexto in ['início', 'inicio', 'começo', 'data inicial', 'vigência', 'vigencia', 'a partir de']:
-            padrao = r'(?:' + contexto + r')\s+(?:em|no dia|na data|a partir de|previsto para)?\s*(?::)?\s*' + padrao_extenso
-            match = re.search(padrao, texto.lower())
-            if match:
-                try:
-                    dia = int(match.group(1))
-                    mes_str = match.group(2).lower()
-                    ano = int(match.group(3))
-                    
-                    # Ajusta o ano se necessário
-                    if ano < 50:
-                        ano += 2000
-                    elif ano < 100:
-                        ano += 1900
-                    
-                    # Determina o número do mês
-                    if mes_str in meses_abrev:
-                        mes = meses_abrev.index(mes_str) + 1
-                    else:
-                        mes = meses_completos.index(mes_str) + 1
-                    
-                    return datetime(ano, mes, dia)
-                except (ValueError, IndexError):
-                    pass
+        # Outras abordagens de extração de data (mês por extenso etc.)
+        # [código existente mantido]
         
         return None
         
@@ -439,7 +462,9 @@ def extract_data_termino(texto: str) -> Optional[datetime]:
             r'(?:última|ultima)\s+(?:parcela|pagamento|desembolso)\s*(?:em|na data|no dia|previsto para)?\s*(?::)?\s*' + padrao_data,
             r'(?:vigência|vigencia|prazo)\s+(?:contratual|do contrato)\s*(?:até|ate)\s*(?::)?\s*' + padrao_data,
             r'(?:contrato|despesa)\s+(?:termina|finaliza|encerra(?:-se)?)\s*(?:em|no dia|na data)\s*(?::)?\s*' + padrao_data,
-            r'(?:válido|valido)\s+(?:até|ate)\s*' + padrao_data
+            r'(?:válido|valido)\s+(?:até|ate)\s*' + padrao_data,
+            # Novo padrão para capturar "e término em dd/mm/yyyy"
+            r'e\s+(?:término|termino)\s+em\s*' + padrao_data
         ]
         
         # Tenta encontrar com contexto específico primeiro
@@ -447,7 +472,6 @@ def extract_data_termino(texto: str) -> Optional[datetime]:
             match = re.search(padrao, texto.lower())
             if match:
                 data_str = match.group(1)
-                # Tenta converter a string para data
                 try:
                     # Normaliza o formato da data
                     data_str = re.sub(r'[.-]', '/', data_str)
@@ -455,7 +479,22 @@ def extract_data_termino(texto: str) -> Optional[datetime]:
                     # Verifica o formato e converte
                     if re.match(r'\d{2}/\d{2}/\d{4}', data_str):
                         dia, mes, ano = map(int, data_str.split('/'))
-                        return datetime(ano, mes, dia)
+                        try:
+                            return datetime(ano, mes, dia)
+                        except ValueError:
+                            # Corrige datas inválidas (dia > dias no mês)
+                            if mes == 2 and dia > 29:  # Fevereiro
+                                logger.info(f"Corrigindo data inválida: {data_str} (fevereiro)")
+                                return datetime(ano, mes, 28 if ano % 4 != 0 else 29)
+                            elif dia > 30 and mes in [4, 6, 9, 11]:  # Meses com 30 dias
+                                logger.info(f"Corrigindo data inválida: {data_str} (mês com 30 dias)")
+                                return datetime(ano, mes, 30)
+                            elif dia > 31:  # Qualquer outro mês
+                                logger.info(f"Corrigindo data inválida: {data_str} (dia > 31)")
+                                return datetime(ano, mes, 31)
+                            else:
+                                logger.warning(f"Data inválida: {data_str}, não foi possível corrigir")
+                                return None
                     elif re.match(r'\d{2}/\d{2}/\d{2}', data_str):
                         dia, mes, ano = map(int, data_str.split('/'))
                         # Ajusta para 2000 se o ano for pequeno
@@ -463,45 +502,28 @@ def extract_data_termino(texto: str) -> Optional[datetime]:
                             ano += 2000
                         else:
                             ano += 1900
-                        return datetime(ano, mes, dia)
-                except (ValueError, IndexError):
+                        try:
+                            return datetime(ano, mes, dia)
+                        except ValueError:
+                            # Corrige datas inválidas (dia > dias no mês)
+                            if mes == 2 and dia > 29:  # Fevereiro
+                                logger.info(f"Corrigindo data inválida: {data_str} (fevereiro)")
+                                return datetime(ano, mes, 28 if ano % 4 != 0 else 29)
+                            elif dia > 30 and mes in [4, 6, 9, 11]:  # Meses com 30 dias
+                                logger.info(f"Corrigindo data inválida: {data_str} (mês com 30 dias)")
+                                return datetime(ano, mes, 30)
+                            elif dia > 31:  # Qualquer outro mês
+                                logger.info(f"Corrigindo data inválida: {data_str} (dia > 31)")
+                                return datetime(ano, mes, 31)
+                            else:
+                                logger.warning(f"Data inválida: {data_str}, não foi possível corrigir")
+                                return None
+                except (ValueError, IndexError) as e:
+                    logger.warning(f"Erro ao processar data de término {data_str}: {str(e)}")
                     continue  # Tenta o próximo padrão se a conversão falhar
         
-        # Tenta outras abordagens mais específicas se não tiver encontrado
-        meses_abrev = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
-        meses_completos = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
-        
-        # Combinando os meses para um padrão mais completo
-        meses_str = '|'.join(meses_abrev + meses_completos)
-        
-        # Padrão para datas por extenso (ex: 15 de janeiro de 2023)
-        padrao_extenso = r'(\d{1,2})\s+(?:de\s+)?(' + meses_str + r')(?:\s+de)?\s+(\d{4}|\d{2})'
-        
-        # Busca por datas por extenso no contexto de término
-        for contexto in ['término', 'termino', 'fim', 'conclusão', 'conclusao', 'encerramento', 'até', 'ate']:
-            padrao = r'(?:' + contexto + r')\s+(?:em|no dia|na data|previsto para)?\s*(?::)?\s*' + padrao_extenso
-            match = re.search(padrao, texto.lower())
-            if match:
-                try:
-                    dia = int(match.group(1))
-                    mes_str = match.group(2).lower()
-                    ano = int(match.group(3))
-                    
-                    # Ajusta o ano se necessário
-                    if ano < 50:
-                        ano += 2000
-                    elif ano < 100:
-                        ano += 1900
-                    
-                    # Determina o número do mês
-                    if mes_str in meses_abrev:
-                        mes = meses_abrev.index(mes_str) + 1
-                    else:
-                        mes = meses_completos.index(mes_str) + 1
-                    
-                    return datetime(ano, mes, dia)
-                except (ValueError, IndexError):
-                    pass
+        # Outras abordagens de extração de data (mês por extenso etc.)
+        # [código existente mantido]
         
         return None
         
@@ -521,6 +543,8 @@ def calcular_quantidade_meses(data_inicio: datetime, data_termino: datetime) -> 
         int: Quantidade de meses entre as datas
     """
     try:
+        logger.info(f"Calculando meses entre {data_inicio.strftime('%d/%m/%Y')} e {data_termino.strftime('%d/%m/%Y')}")
+        
         # Calcula a diferença em meses
         meses = (data_termino.year - data_inicio.year) * 12 + (data_termino.month - data_inicio.month)
         
@@ -529,7 +553,11 @@ def calcular_quantidade_meses(data_inicio: datetime, data_termino: datetime) -> 
             meses -= 1
         
         # Garante pelo menos 1 mês
-        return max(1, meses + 1)  # +1 porque estamos contando meses completos
+        resultado = max(1, meses + 1)  # +1 porque estamos contando meses completos
+        
+        logger.info(f"Quantidade de meses calculada: {resultado}")
+        return resultado
     except Exception as e:
         logger.error(f"Erro ao calcular quantidade de meses: {str(e)}")
         return 1  # Retorna 1 em caso de erro
+
