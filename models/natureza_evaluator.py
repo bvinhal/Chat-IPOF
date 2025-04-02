@@ -827,7 +827,6 @@ class NaturezaEvaluator(AIModel):
         return result# models/natureza_evaluator.py
 
     def evaluate_candidates(self, descricao: str, candidatos: List[Dict[str, Any]]) -> Dict[str, Any]:
-
         """
         Avalia múltiplos candidatos de natureza de despesa para uma descrição.
         
@@ -845,8 +844,10 @@ class NaturezaEvaluator(AIModel):
         try:
             # Normalizar os códigos de candidatos (remover os últimos dois dígitos - dd)
             candidatos_normalizados = []
+            codigos_originais = []  # Lista simples para verificação rápida
             for candidato in candidatos:
                 codigo = candidato['codigo']
+                codigos_originais.append(codigo)
                 # Divide por pontos e remove os últimos dois dígitos se houver
                 partes = codigo.split('.')
                 if len(partes) >= 4:  # Certifica que tem pelo menos c.g.mm.ee
@@ -887,16 +888,16 @@ class NaturezaEvaluator(AIModel):
             IMPORTANTE: Desconsidere os dois últimos dígitos (dd) do código ao fazer a avaliação,
             considerando apenas a estrutura c.g.mm.ee (categoria econômica, grupo, modalidade, elemento).
                         
-            Na sua resposta, inclua:
-            1. Um ranking das naturezas candidatas, da mais adequada para a menos adequada
-            2. Uma justificativa baseada APENAS em texto explícito do MCASP
-            3. Se nenhuma das naturezas candidatas for adequada, sugira uma natureza mais apropriada
+            Na sua resposta, inclua os seguintes itens de forma a obedecer o seguinte padrão:
+            Item 1. Um ranking numerado das naturezas candidatas, da mais adequada para a menos adequada, com os 
+            subitens iniciando com 1.1 para a mais relevante, 1.2 para a segunda mais relevante e 1.3 para a menos relevante
+            Item 2. Justificativa: uma justificativa baseada APENAS em texto explícito do MCASP
+            Item 3. Se nenhuma das naturezas candidatas for adequada, sugira uma natureza mais apropriada
             especificando o código c.g.mm.ee, porém ela deve aparecer textualmente no MCASP
 
             Para cada afirmação, indique a página ou seção do MCASP onde a informação foi encontrada.
 
             Responda em um formato estruturado que permita a extração fácil das informações.
-
             """
             
             # Faz a consulta ao modelo
@@ -905,51 +906,73 @@ class NaturezaEvaluator(AIModel):
             # Processa a resposta
             response = result['result'] if isinstance(result, dict) and 'result' in result else result
             
-            # Tentar extrair o ranking
-            ranking = []
+            # ABORDAGEM COMPLETAMENTE NOVA: Extração rigorosa da ordenação do modelo
             
-            # Procura por padrões como "1. 3.3.90.30"
-            for i, cand in enumerate(candidatos_normalizados):
-                # Verifica se o candidato é mencionado como melhor ou mais adequado
-                position = -1
-                padrao = f"{i+1}\.\s*{re.escape(cand['codigo_original'])}"
-                match = re.search(padrao, response)
-                if match:
-                    position = i+1
+            # 1. Primeiro tenta localizar um ranking numerado explícito
+            # Padrão: "1. 3.3.90.30", "2. 4.4.90.52", etc.
+            ranking_explicito = []
+            ranking_pattern = r'(?:^|\n)\s*(\d+)\s*\.\s*(\d\.\d\.\d{1,2}\.\d{1,2})'
+            for match in re.finditer(ranking_pattern, response):
+                posicao = int(match.group(1))
+                codigo = match.group(2)
+                if codigo in codigos_originais:
+                    ranking_explicito.append((posicao, codigo))
+            
+            # 2. Se encontrou ranking explícito, vamos usá-lo
+            if ranking_explicito:
+                # Ordena pelo número de posição
+                ranking_explicito.sort(key=lambda x: x[0])
+                ordered_codigos = [codigo for _, codigo in ranking_explicito]
                 
-                # Procura por termos positivos associados ao candidato
-                termos_positivos = [
-                    "mais adequad[ao]", "melhor", "recomendad[ao]", 
-                    "mais apropriada", "correta", "ideal"
-                ]
+                # Adiciona qualquer código que não estava no ranking explícito ao final
+                for codigo in codigos_originais:
+                    if codigo not in ordered_codigos:
+                        ordered_codigos.append(codigo)
+            
+            # 3. Se não encontrou ranking explícito, tenta pela primeira ocorrência de cada código
+            else:
+                # Lista para armazenar a posição da primeira ocorrência de cada código
+                primeira_ocorrencia = []
                 
-                score = cand['confianca']  # Começamos com a confiança original
-                for termo in termos_positivos:
-                    if re.search(f"{re.escape(cand['codigo_original'])}.*?{termo}", response, re.IGNORECASE) or \
-                    re.search(f"{termo}.*?{re.escape(cand['codigo_original'])}", response, re.IGNORECASE):
-                        score += 0.1  # Aumenta o score por cada termo positivo associado
+                for codigo in codigos_originais:
+                    match = re.search(re.escape(codigo), response)
+                    if match:
+                        primeira_ocorrencia.append((match.start(), codigo))
+                    else:
+                        # Se o código não for encontrado, coloca no final com uma posição alta
+                        primeira_ocorrencia.append((len(response) + 1, codigo))
+                
+                # Ordena pela posição da primeira ocorrência
+                primeira_ocorrencia.sort(key=lambda x: x[0])
+                ordered_codigos = [codigo for _, codigo in primeira_ocorrencia]
+            
+            # Cria o ranking final usando a ordem determinada
+            ranking = []
+            codigos_to_info = {c['codigo_original']: c for c in candidatos_normalizados}
+            
+            # Agora vamos construir o ranking respeitando a ordem determinada
+            for i, codigo in enumerate(ordered_codigos, 1):
+                info = codigos_to_info.get(codigo, {})
+                # Score baseado exclusivamente na posição
+                score = max(0.1, 1.0 - (i-1) * 0.15)  # Decai mais rapidamente com a posição
                 
                 ranking.append({
-                    'codigo': cand['codigo_original'],
-                    'codigo_norm': cand['codigo_norm'],
-                    'score': min(score, 1.0),  # Cap em 1.0
-                    'position': position,
-                    'nome': cand['nome'],
-                    'confianca_original': cand['confianca']
+                    'codigo': codigo,
+                    'codigo_norm': info.get('codigo_norm', codigo),
+                    'score': score,
+                    'position': i,
+                    'nome': info.get('nome', ''),
+                    'confianca_original': info.get('confianca', 0.0)
                 })
             
-            # Ordena o ranking com base no score e posição
-            ranking.sort(key=lambda x: (-x['score'], x['position'] if x['position'] > 0 else 999))
+            # O restante do código permanece o mesmo
             
             # Procura por uma natureza alternativa sugerida
             alternative_codes = re.findall(r'\d\.\d\.\d{1,2}\.\d{1,2}', response)
             
             # Filtra códigos de candidatos
-            candidatos_codigos = [c['codigo_original'] for c in candidatos_normalizados]
-            candidate_norm_codes = [c['codigo_norm'] for c in candidatos_normalizados]
             alternative_codes = [code for code in alternative_codes 
-                                if code not in candidatos_codigos and
-                                code not in candidate_norm_codes]
+                                if code not in codigos_originais]
             
             best_alternative = None
             if alternative_codes:
@@ -976,47 +999,41 @@ class NaturezaEvaluator(AIModel):
                 }
             
             # Extrai a justificativa
-            # Extrai a justificativa, que está no item 2 da resposta
-            justificativa = response
-
-            # Primeiro tenta encontrar um padrão numerado explícito "2." seguido de qualquer texto até o item "3." ou final
-            justificativa_pattern = r'(?:^|\n)\s*2\.?\s*(?:justificativa baseada APENAS em texto explícito do MCASP:|justificação)?.*?:?(.*?)(?:(?:^|\n)\s*3\.|\Z)'
+            justificativa_pattern = justificativa_pattern = r'(?:^|\n)\s*(?:Item\s*)?2\.\s*(?:justificativa|justificação).*?:?(.*?)(?=(?:^|\n)\s*(?:Item\s*)?3\.|\Z)' #r'(?:^|\n)\s*2\.(?:Item|*)\s*(?:justificativa|justificação).*?:?(.*?)(?:(?:^|\n)\s*3\.|\Z)'
             justificativa_match = re.search(justificativa_pattern, response, re.IGNORECASE | re.DOTALL)
 
             if justificativa_match:
-                # Extrai o conteúdo do grupo capturado e limpa espaços extras
                 justificativa = justificativa_match.group(1).strip()
             else:
-                # Se não encontrar o padrão numerado, tenta buscar por seção de justificativa
+                # Tenta outra abordagem se o padrão específico não for encontrado
                 alt_pattern = r'(?:justificativa|justificação).*?:(.*?)(?:(?:^|\n)\s*\d\.|\Z)'
                 alt_match = re.search(alt_pattern, response.lower(), re.DOTALL)
                 if alt_match:
                     justificativa = alt_match.group(1).strip()
+                else:
+                    justificativa = response
 
             # Limpa linhas em branco e espaços extras
             justificativa = re.sub(r'\n\s*\n', '\n', justificativa)
 
             # Se a justificativa ainda for muito longa, tenta extrair um resumo
-            # mas tenta manter frases completas
-            if len(justificativa) > 500:
-                last_sentence_end = justificativa[:500].rfind('.')
+            if len(justificativa) > 800:
+                last_sentence_end = justificativa[:800].rfind('.')
                 if last_sentence_end > 0:
                     justificativa = justificativa[:last_sentence_end + 1]
                 else:
-                    justificativa = justificativa[:500] + "..."
+                    justificativa = justificativa[:800] + "..."
                                 
             # Se não encontrou uma justificativa clara, usa um trecho do texto
             if not justificativa or len(justificativa) < 50:
                 justificativa = response[:500] + "..." if len(response) > 500 else response
             
-            # Determina a recomendação final
-            recommended = None
-            if ranking and ranking[0]['score'] >= 0.7:
-                recommended = ranking[0]
-            elif best_alternative:
+            # Determina a recomendação final baseada APENAS na ordem
+            recommended = ranking[0] if ranking else None
+            
+            # Se temos uma alternativa que parece melhor, priorize-a
+            if best_alternative and (not recommended or best_alternative['score'] > recommended['score']):
                 recommended = best_alternative
-            elif ranking:
-                recommended = ranking[0]  # Fallback para o melhor ranqueado
             
             # Monta o resultado final
             resultado = {
@@ -1041,6 +1058,4 @@ class NaturezaEvaluator(AIModel):
                 'recommended': candidatos_ordenados[0] if candidatos_ordenados else None,
                 'error': str(e)
             }
-
-
 

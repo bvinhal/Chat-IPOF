@@ -169,6 +169,13 @@ class OpenAIModel(AIModel):
         for loader in [pdf_loader, docx_loader, txt_loader]:
             try:
                 docs = loader.load()
+                for doc in docs:
+                    if hasattr(doc, 'metadata') and 'source' in doc.metadata:
+                        source_path = doc.metadata['source']
+                        doc.metadata['filename'] = os.path.basename(source_path)
+                        # Registra o nome no log para depuração
+                        self.logger.debug(f"Arquivo carregado: {doc.metadata['filename']}")
+    
                 self.logger.info(f"Carregados {len(docs)} documentos de {loader.__class__.__name__}")
                 documents.extend(docs)
             except Exception as e:
