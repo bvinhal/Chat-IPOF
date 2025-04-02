@@ -75,7 +75,7 @@ class EnhancedChatController(ChatController):
         
         return self.natureza_evaluator_controller.evaluate_natureza(descricao, natureza_codigo)
         
-    def _format_response_with_natureza(self, original_response: str, natureza_result: Dict[str, Any]) -> str:
+    def _format_response_with_natureza(self, natureza_result: Dict[str, Any]) -> str:
         """
         Formata a resposta para incluir a seção de classificação de natureza.
         Replica a formatação original do ChatNaturezaHandler.
@@ -91,7 +91,7 @@ class EnhancedChatController(ChatController):
         recommended = natureza_result.get('recommended', predictions[0] if predictions else None)
         
         # Adiciona o separador e o título da seção
-        formatted_response = recommended.get('justificativa') + "\n\n---\n\n" # original_response + "\n\n---\n\n"
+        formatted_response = recommended.get('justificativa') + "\n\n" # original_response + "\n\n---\n\n"
         formatted_response += "**Classificação de Natureza de Despesa:**\n\n"
         
         if recommended:
@@ -143,17 +143,7 @@ class EnhancedChatController(ChatController):
                 
                 # Se temos previsões, incorporamos essa informação na consulta ao modelo geral
                 if natureza_result['predictions']:
-                    # Prepara a consulta enriquecida para o modelo geral
-                    
-                    #enhanced_query = self._prepare_enhanced_query(message, natureza_result)
-                    
-                    # 2. Segunda etapa: Consulta o modelo geral com a consulta enriquecida
-                    response = ''#super().process_message(enhanced_query, chat_history)
-                    
-                    # Verifica se a resposta já contém a seção formatada
-                    if '---' not in response and '**Classificação de Natureza de Despesa:**' not in response:
-                        # Se não tiver, adiciona a formatação manualmente
-                        response = self._format_response_with_natureza(response, natureza_result)
+                    response = self._format_response_with_natureza(natureza_result)
                     
                     return response
             
@@ -168,7 +158,7 @@ class EnhancedChatController(ChatController):
                 f"Detalhes do erro: {str(e)}"
             )
     
-    def _prepare_enhanced_query(self, original_query: str, natureza_result: Dict[str, Any]) -> str:
+
         """
         Prepara uma consulta enriquecida com os resultados do classificador de natureza.
         

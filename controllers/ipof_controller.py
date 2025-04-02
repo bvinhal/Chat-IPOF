@@ -335,7 +335,7 @@ class IPOFController:
         sugestoes_natureza = []
         try:
             if self.classificador.is_trained:
-                predicoes = self.classificador.predict(resumo, top_k=1)
+                predicoes = self.classificador.predict(conteudo, top_k=1)
                 if predicoes:
                     sugestao = predicoes[0]
                     sugestoes_natureza.append(sugestao)
