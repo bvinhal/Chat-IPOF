@@ -888,16 +888,20 @@ class NaturezaEvaluator(AIModel):
             IMPORTANTE: Desconsidere os dois últimos dígitos (dd) do código ao fazer a avaliação,
             considerando apenas a estrutura c.g.mm.ee (categoria econômica, grupo, modalidade, elemento).
                         
-            Na sua resposta, inclua os seguintes itens de forma a obedecer o seguinte padrão:
+            Na sua resposta, inclua os seguintes itens de forma esturuturada, obedecendo o seguinte padrão:
+            
             Item 1. Um ranking numerado das naturezas candidatas, da mais adequada para a menos adequada, com os 
             subitens iniciando com 1.1 para a mais relevante, 1.2 para a segunda mais relevante e 1.3 para a menos relevante
-            Item 2. Justificativa: uma justificativa baseada APENAS em texto explícito do MCASP
+            
+            Item 2. Justificativa: uma justificativa baseada APENAS em texto explícito do MCASP indicando quando possível
+            a página ou seção do MCASP onde a informação foi encontrada
+            
             Item 3. Se nenhuma das naturezas candidatas for adequada, sugira uma natureza mais apropriada
-            especificando o código c.g.mm.ee, porém ela deve aparecer textualmente no MCASP
+            especificando o código c.g.mm.ee, porém ela deve aparecer textualmente no MCASP. Esta sugestão deverá ser
+            feita somente se nenhuma das naturezas candidatas estiver entre as mais adequadas. Se uma das naturezas
+            candidatas estiver entre as mais adequadas, deverá ser retornado "Item 3. Sem sugestão"
 
-            Para cada afirmação, indique a página ou seção do MCASP onde a informação foi encontrada.
-
-            Responda em um formato estruturado que permita a extração fácil das informações.
+            
             """
             
             # Faz a consulta ao modelo
@@ -965,17 +969,37 @@ class NaturezaEvaluator(AIModel):
                     'confianca_original': info.get('confianca', 0.0)
                 })
             
-            # O restante do código permanece o mesmo
-            
+            # Modificação para o método evaluate_candidates da classe NaturezaEvaluator
+            # Este código deve substituir o trecho que trata dos códigos alternativos (aproximadamente linhas 971-999)
+
             # Procura por uma natureza alternativa sugerida
             alternative_codes = re.findall(r'\d\.\d\.\d{1,2}\.\d{1,2}', response)
-            
+
             # Filtra códigos de candidatos
             alternative_codes = [code for code in alternative_codes 
                                 if code not in codigos_originais]
-            
+
+            # Verifica se o modelo indica explicitamente que nenhuma natureza é adequada
+            nenhuma_adequada = False
+            padroes_inadequacao = [
+                r'nenhuma\s+das\s+naturezas\s+(?:é|parece|seria|se\s+mostra)\s+adequada',
+                r'nenhuma\s+das\s+opções\s+(?:é|parece|seria|se\s+mostra)\s+adequada',
+                r'nenhum\s+dos\s+candidatos\s+(?:é|parece|seria|se\s+mostra)\s+adequad[oa]',
+                r'não\s+há\s+natureza\s+adequada\s+entre\s+as\s+(?:opções|candidatas)',
+                r'sugiro\s+uma\s+natureza\s+(?:alternativa|diferente)',
+                r'recomendo\s+utilizar\s+(?:outra|uma\s+natureza\s+diferente)',
+                r'(?:todas|ambas)\s+as\s+naturezas\s+(?:são|estão|parecem)\s+inadequadas',
+                r'nenhuma\s+(?:se adequa|está adequada|corresponde)'
+            ]
+
+            for padrao in padroes_inadequacao:
+                if re.search(padrao, response.lower()):
+                    nenhuma_adequada = True
+                    logger.info(f"Detectada indicação de que nenhuma natureza é adequada usando padrão: {padrao}")
+                    break
+
             best_alternative = None
-            if alternative_codes:
+            if alternative_codes and nenhuma_adequada:
                 alt_code = alternative_codes[0]
                 
                 # Tenta encontrar o nome do código
@@ -993,10 +1017,23 @@ class NaturezaEvaluator(AIModel):
                 best_alternative = {
                     'codigo': alt_code,
                     'codigo_norm': alt_code_norm,
-                    'score': 0.9,  # Score padrão para alternativa sugerida
+                    'score': 0.9 if nenhuma_adequada else 0.6,  # Score mais alto se nenhuma é adequada
                     'nome': alt_name,
-                    'sugerido_pelo_modelo': True
+                    'sugerido_pelo_modelo': True,
+                    'e_alternativa': True
                 }
+                
+                logger.info(f"Código alternativo sugerido: {alt_code} - {alt_name}")
+
+            # Modificar também a lógica de recomendação:
+            # Determina a recomendação final baseada na ordem
+            recommended = ranking[0] if ranking else None
+
+            # Só recomenda a alternativa se nenhuma das originais for adequada
+            if best_alternative and nenhuma_adequada:
+                # Se o modelo indicou explicitamente que nenhuma é adequada, usa a alternativa
+                recommended = best_alternative
+                logger.info(f"Recomendando alternativa {best_alternative['codigo']} por indicação explícita de inadequação")
             
             # Extrai a justificativa
             justificativa_pattern = justificativa_pattern = r'(?:^|\n)\s*(?:Item\s*)?2\.\s*(?:justificativa|justificação).*?:?(.*?)(?=(?:^|\n)\s*(?:Item\s*)?3\.|\Z)' #r'(?:^|\n)\s*2\.(?:Item|*)\s*(?:justificativa|justificação).*?:?(.*?)(?:(?:^|\n)\s*3\.|\Z)'
@@ -1039,8 +1076,9 @@ class NaturezaEvaluator(AIModel):
             resultado = {
                 'ranking': ranking,
                 'justificativa': justificativa,
-                'best_alternative': best_alternative,
+                'best_alternative': best_alternative if nenhuma_adequada else None,  # Só inclui a alternativa se nenhuma é adequada
                 'recommended': recommended,
+                'nenhuma_adequada': nenhuma_adequada,  # Nova flag para indicar a inadequação das naturezas originais
                 'full_response': response
             }
             
