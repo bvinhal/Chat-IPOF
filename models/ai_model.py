@@ -67,7 +67,23 @@ class AIModel(ABC):
             str: Resposta gerada pelo modelo
         """
         pass
-    
+
+    @abstractmethod
+    def analyze_natureza_options(self, description: str, natureza_options: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Analisa uma lista de opções de natureza de despesa e seleciona as mais adequadas
+        para a descrição fornecida.
+        
+        Args:
+            description: Descrição da despesa
+            natureza_options: Lista de opções de natureza de despesa, 
+                            cada uma com 'codigo', 'nome' e 'confianca'
+            
+        Returns:
+            List[Dict[str, Any]]: Lista das naturezas mais adequadas, ordenadas por relevância
+        """
+        pass
+
     def save_model(self, model_name: str = None) -> bool:
         """
         Salva o modelo treinado para uso posterior.

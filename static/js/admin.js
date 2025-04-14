@@ -21,6 +21,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const evaluatorTrainingStatus = document.getElementById('evaluatorTrainingStatus');
     const evaluatorsList = document.getElementById('evaluatorsList');
 
+    // Elementos para o classificador SentenceTransformer
+    const trainSTForm = document.getElementById('trainSTForm');
+    const stTrainingStatus = document.getElementById('stTrainingStatus');
+    const testSTForm = document.getElementById('testSTForm');
+    const stTestResults = document.getElementById('stTestResults');
+    const stResultsContent = document.getElementById('stResultsContent');
+
     // Inicialização
     loadModels();
     loadNaturezaModels();
@@ -717,4 +724,253 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }, 5000);
     }
+
+
+    if (trainSTForm) {
+        trainSTForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            const csvFile = document.getElementById('stCsvFile').files[0];
+            
+            // Verifica se um arquivo foi selecionado
+            if (!csvFile) {
+                showNotification('Por favor, selecione um arquivo CSV', 'warning');
+                return;
+            }
+            
+            // Mostra status de treinamento
+            if (stTrainingStatus) {
+                trainSTForm.style.display = 'none';
+                stTrainingStatus.classList.remove('hidden');
+            }
+            
+            try {
+                // Cria um FormData para upload do arquivo
+                const formData = new FormData();
+                formData.append('file', csvFile);
+                
+                // Faz upload do arquivo
+                const uploadResponse = await fetch('/api/upload-st-csv', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!uploadResponse.ok) {
+                    throw new Error('Falha ao fazer upload do arquivo CSV');
+                }
+                
+                const uploadResult = await uploadResponse.json();
+                
+                // Inicia o treinamento
+                const trainResponse = await fetch('/api/train-st-classifier', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        csv_path: uploadResult.file_path
+                    }),
+                });
+                
+                const trainResult = await trainResponse.json();
+                
+                if (stTrainingStatus) {
+                    if (trainResult.success) {
+                        stTrainingStatus.innerHTML = `
+                            <div class="status-container success">
+                                <i class="fas fa-check-circle"></i>
+                                <p>${trainResult.message}</p>
+                            </div>
+                            <button type="button" class="primary-button reset-st-form-btn">Voltar</button>
+                        `;
+                    } else {
+                        stTrainingStatus.innerHTML = `
+                            <div class="status-container error">
+                                <i class="fas fa-exclamation-circle"></i>
+                                <p>Erro no treinamento: ${trainResult.message}</p>
+                            </div>
+                            <button type="button" class="primary-button reset-st-form-btn">Voltar</button>
+                        `;
+                    }
+                    
+                    // Adiciona evento para resetar o formulário
+                    document.querySelector('.reset-st-form-btn').addEventListener('click', function() {
+                        stTrainingStatus.classList.add('hidden');
+                        trainSTForm.style.display = 'block';
+                    });
+                }
+                
+            } catch (error) {
+                console.error('Erro:', error);
+                if (stTrainingStatus) {
+                    stTrainingStatus.innerHTML = `
+                        <div class="status-container error">
+                            <i class="fas fa-exclamation-circle"></i>
+                            <p>Erro ao se comunicar com o servidor: ${error.message}</p>
+                        </div>
+                        <button type="button" class="primary-button reset-st-form-btn">Voltar</button>
+                    `;
+                    
+                    document.querySelector('.reset-st-form-btn').addEventListener('click', function() {
+                        stTrainingStatus.classList.add('hidden');
+                        trainSTForm.style.display = 'block';
+                    });
+                }
+            }
+        });
+    }
+    
+    // Event listener para o formulário de teste do SentenceTransformer
+    if (testSTForm) {
+        testSTForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            const description = document.getElementById('stTestDescription').value;
+            
+            if (!description) {
+                showNotification('Por favor, insira uma descrição para teste', 'warning');
+                return;
+            }
+            
+            // Mostra a área de resultados com spinner
+            if (stResultsContent) {
+                stResultsContent.innerHTML = `
+                    <div class="spinner"></div>
+                    <p>Classificando a descrição...</p>
+                `;
+                stTestResults.classList.remove('hidden');
+            }
+            
+            try {
+                const response = await fetch('/api/test-st-classifier', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        description: description
+                    }),
+                });
+                
+                const result = await response.json();
+                
+                if (stResultsContent) {
+                    if (result.success) {
+                        // Formata os resultados
+                        let html = '<div class="st-predictions">';
+                        
+                        result.predictions.forEach((pred, index) => {
+                            const confidence = (pred.confianca * 100).toFixed(2);
+                            const score = pred.score ? (pred.score * 100).toFixed(2) : confidence;
+                            const confidenceClass = score > 70 ? 'high' : 
+                                                    score > 40 ? 'medium' : 'low';
+                            
+                            html += `
+                                <div class="prediction-item">
+                                    <div class="prediction-rank">${index + 1}</div>
+                                    <div class="prediction-content">
+                                        <div class="prediction-code"><strong>Código:</strong> ${pred.codigo}</div>
+                                        <div class="prediction-name"><strong>Descrição:</strong> ${pred.nome}</div>
+                                        <div class="prediction-confidence ${confidenceClass}"><strong>Confiança:</strong> ${score}%</div>
+                                        ${pred.justificativa ? `<div class="prediction-justification"><strong>Justificativa:</strong> ${pred.justificativa}</div>` : ''}
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        html += '</div>';
+                        
+                        if (result.used_llm) {
+                            html += `<div class="info-box">
+                                <p>Os resultados acima foram refinados usando o modelo ${result.llm_model || 'LLM'} 
+                                para selecionar as naturezas mais adequadas dentre as candidatas identificadas pelo classificador SentenceTransformer.</p>
+                            </div>`;
+                        }
+                        
+                        stResultsContent.innerHTML = html;
+                    } else {
+                        stResultsContent.innerHTML = `
+                            <div class="status-container error">
+                                <p>Erro na classificação: ${result.message}</p>
+                            </div>
+                        `;
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Erro:', error);
+                if (stResultsContent) {
+                    stResultsContent.innerHTML = `
+                        <div class="status-container error">
+                            <p>Erro ao se comunicar com o servidor: ${error.message}</p>
+                        </div>
+                    `;
+                }
+            }
+        });
+    }
+    
+    // Adicionar estilos para os resultados
+    const style = document.createElement('style');
+    style.textContent = `
+        .st-predictions {
+            margin-top: 1rem;
+        }
+        .prediction-item {
+            display: flex;
+            margin-bottom: 1rem;
+            padding: 1rem;
+            border-radius: var(--radius);
+            background-color: var(--ultra-light);
+            border-left: 4px solid var(--primary-color);
+        }
+        .prediction-rank {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-right: 1rem;
+            color: var(--primary-color);
+            min-width: 2rem;
+            text-align: center;
+        }
+        .prediction-content {
+            flex: 1;
+        }
+        .prediction-code, .prediction-name, .prediction-confidence {
+            margin-bottom: 0.5rem;
+        }
+        .prediction-confidence.high {
+            color: var(--success);
+        }
+        .prediction-confidence.medium {
+            color: var(--warning);
+        }
+        .prediction-confidence.low {
+            color: var(--error);
+        }
+        .mt-4 {
+            margin-top: 2rem;
+        }
+    `;
+    document.head.appendChild(style);
+    const additionalStyle = `
+        .prediction-justification {
+            margin-top: 0.75rem;
+            padding: 0.75rem;
+            background-color: #f8f9fa;
+            border-left: 3px solid var(--primary-color);
+            border-radius: 0 var(--radius) var(--radius) 0;
+            font-style: italic;
+        }
+        
+        .info-box {
+            margin-top: 1.5rem;
+            padding: 0.75rem;
+            background-color: var(--light);
+            border-radius: var(--radius);
+            font-size: 0.9rem;
+            color: var(--medium-dark);
+        }
+    `;
+    document.head.appendChild(document.createElement('style')).textContent += additionalStyle;
+
 });

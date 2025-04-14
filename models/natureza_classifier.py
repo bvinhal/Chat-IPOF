@@ -16,6 +16,7 @@ from models.openai_embedding_model import OpenAIEmbeddingModel
 from models.claude_embedding_model import ClaudeEmbeddingModel
 from models.gemini_embedding_model import GeminiEmbeddingModel
 from models.natureza_processor import NaturezaProcessor
+from models.sentence_transformer_classifier import SentenceTransformerClassifier
 
 # Configuração de logging
 logging.basicConfig(
@@ -175,7 +176,7 @@ class NaturezaClassifier:
         except Exception as e:
             self.logger.error(f"Erro durante treinamento do classificador: {str(e)}")
             return False
-    
+    '''
     def predict(self, text: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """
         Prediz as naturezas de despesa mais prováveis para um texto e as avalia.
@@ -296,7 +297,145 @@ class NaturezaClassifier:
             import traceback
             self.logger.error(traceback.format_exc())
             raise
+    '''
+    def predict(self, text: str, top_k: int = 3) -> List[Dict[str, Any]]:
+        """
+        Prediz as naturezas de despesa mais prováveis para um texto e as avalia.
+        Processo em duas etapas:
+        1. Usa o SentenceTransformerClassifier para obter candidatos iniciais
+        2. Usa o modelo LLM para selecionar os 3 melhores dentre esses candidatos
+        
+        Args:
+            text: Texto para classificação
+            top_k: Número de naturezas mais prováveis a retornar
+                
+        Returns:
+            List[Dict[str, Any]]: Lista de previsões ordenadas por relevância
+        """
+        if not self.is_trained or self.knn_model is None:
+            # Tenta carregar o modelo se não estiver treinado
+            if not self.load_model():
+                self.logger.error("Modelo não treinado e não foi possível carregar")
+                raise ValueError("Modelo não treinado e não foi possível carregar")
+        
+        try:
+            # ETAPA 1: Usa o SentenceTransformerClassifier para obter candidatos iniciais
+            st_classifier = SentenceTransformerClassifier()
             
+            # Número de candidatos a serem selecionados na primeira etapa
+            # Vamos pegar mais do que o resultado final para dar mais opções ao LLM
+            intermediate_k = 10
+            
+            try:
+                # Obtém previsões do SentenceTransformer (10 candidatos)
+                st_predictions = st_classifier.predict(text, top_k=intermediate_k)
+                self.logger.info(f"SentenceTransformer retornou {len(st_predictions)} candidatos iniciais")
+                
+                # Se não tiver candidatos suficientes, tenta o método original como fallback
+                if len(st_predictions) < 3:
+                    self.logger.warning("Poucos candidatos do SentenceTransformer, usando método original")
+                    raise Exception("Poucos candidatos")
+                
+            except Exception as st_error:
+                # Se falhar com o SentenceTransformer, usa o método original como fallback
+                self.logger.warning(f"Erro ao usar SentenceTransformerClassifier: {str(st_error)}. Usando método original como fallback.")
+                
+                # Parte original: Gera embedding para o texto de consulta
+                query_embedding = self.embedding_model.get_embeddings([text])
+                
+                # Normaliza o embedding
+                query_embedding = normalize(query_embedding)
+                
+                # Encontra os k vizinhos mais próximos
+                distances, indices = self.knn_model.kneighbors(
+                    query_embedding, 
+                    n_neighbors=min(intermediate_k, len(self.embeddings))
+                )
+                
+                # Converte distâncias de cosseno para similaridades
+                similarities = 1 - distances[0]
+                
+                # Obtém os códigos e textos correspondentes
+                result_indices = indices[0]
+                st_predictions = []
+                
+                for i, idx in enumerate(result_indices):
+                    codigo = self.codigos[idx]
+                    similarity = similarities[i]
+                    
+                    # Busca o nome correspondente ao código
+                    nome = self.code_name_mapping.get(codigo, "Nome não encontrado")
+                    
+                    st_predictions.append({
+                        'codigo': codigo,
+                        'nome': nome,
+                        'confianca': float(similarity),
+                        'texto_referencia': self.texts[idx]
+                    })
+            
+            # ETAPA 2: Usa o modelo LLM para refinar a seleção
+            try:
+                # Para acessar o modelo de IA do controlador de chat
+                import sys
+                sys.path.append('.')
+                
+                # Tenta obter o controlador de chat atual (deve ser instanciado em outro lugar)
+                try:
+                    from controllers.enhanced_chat_controller import EnhancedChatController
+                    
+                    # Tenta usar um singleton ou instância global
+                    chat_controller_instance = None
+                    
+                    # Procura por variáveis globais/instâncias
+                    try:
+                        # Tenta importar a instância do app.py
+                        from app import chat_controller
+                        chat_controller_instance = chat_controller
+                        self.logger.info("Usando instância do chat_controller de app.py")
+                    except ImportError:
+                        self.logger.warning("Não foi possível importar chat_controller de app.py")
+                        # Cria uma nova instância se necessário
+                        try:
+                            chat_controller_instance = EnhancedChatController()
+                            self.logger.info("Criada nova instância de EnhancedChatController")
+                        except Exception as controller_error:
+                            self.logger.error(f"Erro ao criar EnhancedChatController: {str(controller_error)}")
+                    
+                    # Verifica se temos uma instância válida
+                    if chat_controller_instance and chat_controller_instance.current_model:
+                        # Usa o modelo atual para analisar as opções
+                        self.logger.info(f"Usando modelo {chat_controller_instance.current_model_type} para análise LLM")
+                        
+                        llm_results = chat_controller_instance.current_model.analyze_natureza_options(
+                            text, st_predictions
+                        )
+                        
+                        # Se temos resultados válidos, retorna-os
+                        if llm_results and len(llm_results) > 0:
+                            self.logger.info(f"Análise LLM concluída com sucesso, retornando {len(llm_results)} resultados")
+                            return llm_results[:top_k]  # Garante que retorne no máximo top_k resultados
+                    
+                except Exception as controller_error:
+                    self.logger.error(f"Erro ao acessar controlador de chat: {str(controller_error)}")
+                
+                # Se não conseguiu usar o LLM, retorna os melhores candidatos do SentenceTransformer
+                self.logger.warning("Fallback para os melhores candidatos do SentenceTransformer")
+                return st_predictions[:top_k]
+                
+            except Exception as llm_error:
+                self.logger.error(f"Erro na etapa de análise LLM: {str(llm_error)}")
+                import traceback
+                self.logger.error(traceback.format_exc())
+                
+                # Fallback para os melhores candidatos do SentenceTransformer
+                return st_predictions[:top_k]
+        
+        except Exception as e:
+            self.logger.error(f"Erro global ao fazer previsão: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            raise
+                    
     def save_model(self) -> bool:
         """
         Salva o modelo treinado.

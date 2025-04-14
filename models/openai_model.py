@@ -512,3 +512,128 @@ class OpenAIModel(AIModel):
         except Exception as e:
             self.logger.error(f"Erro ao carregar modelo OpenAI: {str(e)}")
             return False
+
+    def analyze_natureza_options(self, description: str, natureza_options: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Analisa uma lista de opções de natureza de despesa usando o modelo OpenAI
+        e seleciona as mais adequadas para a descrição fornecida.
+        
+        Args:
+            description: Descrição da despesa
+            natureza_options: Lista de opções de natureza de despesa, 
+                            cada uma com 'codigo', 'nome' e 'confianca'
+            
+        Returns:
+            List[Dict[str, Any]]: Lista das naturezas mais adequadas, ordenadas por relevância
+        """
+        if self.llm is None and not self.initialize():
+            self.logger.error("Cliente OpenAI não inicializado")
+            raise ValueError("Cliente OpenAI não inicializado. Verifique a API key.")
+        
+        try:
+            # Importa o OpenAI client diretamente
+            from openai import OpenAI
+            
+            # Inicializa o cliente OpenAI
+            client = OpenAI(api_key=self.api_key)
+            
+            # Monta a lista de opções formatada
+            options_text = ""
+            for i, option in enumerate(natureza_options, 1):
+                codigo = option.get('codigo', '')
+                nome = option.get('nome', '')
+                confianca = option.get('confianca', 0)
+                options_text += f"{i}. {codigo} - {nome} (Confiança inicial: {confianca:.2%})\n"
+            
+            # Cria o prompt para análise
+            prompt = f"""
+            Com base na descrição de despesa abaixo, analise as opções de natureza de despesa listadas 
+            e escolha as 3 mais adequadas em ordem de relevância. Sua análise deve considerar a 
+            classificação orçamentária do setor público brasileiro.
+            
+            Descrição da despesa:
+            {description}
+            
+            Opções de natureza de despesa:
+            {options_text}
+            
+            Para cada opção escolhida, forneça:
+            1. O código da natureza
+            2. Uma justificativa de por que esta é uma boa classificação
+            3. Um score de 0 a 100 indicando o grau de adequação
+            
+            Responda no seguinte formato JSON:
+            {{
+                "analise": [
+                    {{
+                        "codigo": "código da natureza",
+                        "justificativa": "justificativa clara e objetiva",
+                        "score": número entre 0 e 100
+                    }},
+                    ...
+                ]
+            }}
+            
+            Retorne APENAS o JSON, sem texto adicional antes ou depois.
+            """
+            
+            # Chama a API para análise
+            response = client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": "Você é um especialista em classificação orçamentária do setor público brasileiro, particularmente em naturezas de despesa."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2,  # Baixa temperatura para resultados mais determinísticos
+                response_format={"type": "json_object"}  # Garante resposta em formato JSON
+            )
+            
+            # Extrai a resposta
+            response_text = response.choices[0].message.content.strip()
+            
+            # Parseia a resposta JSON
+            import json
+            try:
+                result = json.loads(response_text)
+                analysis = result.get('analise', [])
+                
+                # Reorganiza a lista de naturezas de acordo com a análise
+                ranked_options = []
+                
+                for analysis_item in analysis:
+                    codigo = analysis_item.get('codigo')
+                    
+                    # Busca a natureza original correspondente
+                    found = False
+                    for option in natureza_options:
+                        if option.get('codigo') == codigo:
+                            # Cria uma cópia com os novos valores
+                            ranked_option = option.copy()
+                            ranked_option['justificativa'] = analysis_item.get('justificativa', '')
+                            ranked_option['score'] = analysis_item.get('score', 0) / 100  # Normaliza para 0-1
+                            ranked_options.append(ranked_option)
+                            found = True
+                            break
+                    
+                    # Se não encontrou, adiciona como nova entrada
+                    if not found and codigo:
+                        ranked_options.append({
+                            'codigo': codigo,
+                            'nome': f"(Nome não disponível para {codigo})",
+                            'confianca': analysis_item.get('score', 0) / 100,
+                            'justificativa': analysis_item.get('justificativa', '')
+                        })
+                
+                # Limitando aos 3 primeiros resultados
+                return ranked_options[:3]
+            
+            except json.JSONDecodeError:
+                self.logger.error(f"Falha ao decodificar resposta JSON: {response_text}")
+                
+                # Em caso de falha, retorne as 3 primeiras opções originais
+                return sorted(natureza_options, key=lambda x: x.get('confianca', 0), reverse=True)[:3]
+        
+        except Exception as e:
+            self.logger.error(f"Erro ao analisar opções de natureza: {str(e)}")
+            # Em caso de erro, retorna as 3 melhores opções da lista original
+            return sorted(natureza_options, key=lambda x: x.get('confianca', 0), reverse=True)[:3]

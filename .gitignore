@@ -29,3 +29,9 @@ models/__pycache__/gemini_model.cpython-310.pyc
 controllers/__pycache__/chat_controller.cpython-310.pyc
 data/training/mcasp/
 data/training/MCASP - 10ª Edição.pdf
+data/mcasp_oficial.json
+data/subelementos_goias_processados.json
+data/natureza/mcasp_oficial.json
+data/natureza/naturezas_por_elemento.csv
+data/natureza/naturezas_por_elemento.xlsx
+data/natureza/subelementos_goias_processados.json

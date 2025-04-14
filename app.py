@@ -21,7 +21,7 @@ from models.natureza_classifier import NaturezaClassifier
 from models.ipof_model import IPOF, ParcelaIPOF
 from models.chat_natureza_handler import ChatNaturezaHandler
 from controllers.natureza_evaluator_controller import NaturezaEvaluatorController
-
+from models.sentence_transformer_classifier import SentenceTransformerClassifier
 
 # Cria os diretórios necessários se não existirem
 os.makedirs(active_config.DATA_DIR, exist_ok=True)
@@ -662,7 +662,119 @@ def clean_temp_files():
     def natureza_evaluator_demo():
         """Rota para a página de demonstração do avaliador de natureza."""
         return render_template('natureza_evaluator_demo.html')
+    
+    @app.route('/api/upload-st-csv', methods=['POST'])
+    def upload_st_csv():
+        """Endpoint para upload de arquivo CSV para o classificador SentenceTransformer"""
+        if 'file' not in request.files:
+            return jsonify({
+                'success': False,
+                'message': 'Nenhum arquivo encontrado'
+            }), 400
         
+        file = request.files['file']
+        
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'message': 'Nenhum arquivo selecionado'
+            }), 400
+        
+        if file and file.filename.endswith('.csv'):
+            # Cria o diretório para natureza se não existir
+            natureza_dir = os.path.join(active_config.DATA_DIR, 'natureza')
+            os.makedirs(natureza_dir, exist_ok=True)
+            
+            # Salva o arquivo
+            filename = 'naturezas_por_elemento.csv'
+            file_path = os.path.join(natureza_dir, filename)
+            file.save(file_path)
+            
+            return jsonify({
+                'success': True,
+                'message': 'Arquivo CSV carregado com sucesso',
+                'file_path': file_path
+            })
+        
+        return jsonify({
+            'success': False,
+            'message': 'Formato de arquivo não suportado. Use .csv'
+        }), 400
+
+    @app.route('/api/train-st-classifier', methods=['POST'])
+    def train_st_classifier():
+        """Endpoint para treinar o classificador SentenceTransformer"""
+        data = request.json
+        csv_path = data.get('csv_path')
+        
+        # Verifica se o caminho do arquivo foi fornecido
+        if not csv_path:
+            # Se não foi fornecido um caminho específico, usa o arquivo padrão
+            csv_path = os.path.join(active_config.DATA_DIR, 'natureza', 'naturezas_por_elemento.csv')
+        
+        try:
+            # Inicializa o classificador
+            classifier = SentenceTransformerClassifier()
+            
+            # Inicia o treinamento
+            result = classifier.train(csv_path)
+            
+            if result:
+                return jsonify({
+                    'success': True,
+                    'message': 'Classificador SentenceTransformer treinado com sucesso'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'Falha ao treinar classificador SentenceTransformer'
+                }), 400
+        
+        except Exception as e:
+            app.logger.error(f"Erro ao treinar classificador SentenceTransformer: {str(e)}")
+            return jsonify({
+                'success': False,
+                'message': f'Erro ao treinar classificador: {str(e)}'
+            }), 500
+
+    @app.route('/api/test-st-classifier', methods=['POST'])
+    def test_st_classifier():
+        """Endpoint para testar o classificador SentenceTransformer com refinamento LLM"""
+        data = request.json
+        description = data.get('description')
+        
+        if not description:
+            return jsonify({
+                'success': False,
+                'message': 'Descrição não fornecida'
+            }), 400
+        
+        try:
+            # Inicializa o classificador
+            classifier = NaturezaClassifier(chat_controller.current_model_type)
+            
+            # Faz a previsão usando o método atualizado que agora inclui análise LLM
+            predictions = classifier.predict(description, top_k=3)
+            
+            # Determina se o LLM foi usado verificando presença do campo 'justificativa'
+            used_llm = any('justificativa' in pred for pred in predictions)
+            
+            return jsonify({
+                'success': True,
+                'predictions': predictions,
+                'used_llm': used_llm,
+                'llm_model': chat_controller.current_model_type if used_llm else None
+            })
+        
+        except Exception as e:
+            app.logger.error(f"Erro ao testar classificador: {str(e)}")
+            import traceback
+            app.logger.error(traceback.format_exc())
+            return jsonify({
+                'success': False,
+                'message': f'Erro ao testar classificador: {str(e)}'
+            }), 500
+                        
 # Executa a limpeza a cada inicio da aplicação
 clean_temp_files()
 
