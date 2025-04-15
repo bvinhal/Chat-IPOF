@@ -859,20 +859,81 @@ document.addEventListener('DOMContentLoaded', function() {
                         // Formata os resultados
                         let html = '<div class="st-predictions">';
                         
-                        result.predictions.forEach((pred, index) => {
-                            const confidence = (pred.confianca * 100).toFixed(2);
-                            const score = pred.score ? (pred.score * 100).toFixed(2) : confidence;
+                        // Agrupar naturezas por elemento base
+                        const naturezasPorElemento = {};
+                        result.naturezas_completas.forEach(nat => {
+                            if (nat.tipo === 'elemento') {
+                                // Se for elemento, cria uma entrada própria
+                                const key = nat.codigo;
+                                if (!naturezasPorElemento[key]) {
+                                    naturezasPorElemento[key] = {
+                                        elemento: nat,
+                                        subelementos: []
+                                    };
+                                }
+                            } else if (nat.tipo === 'subelemento') {
+                                // Se for subelemento, adiciona ao elemento base
+                                const key = nat.elemento_base;
+                                if (!naturezasPorElemento[key]) {
+                                    naturezasPorElemento[key] = {
+                                        elemento: {
+                                            codigo: nat.elemento_base,
+                                            descricao: nat.descricao_elemento,
+                                            justificativa: nat.justificativa,
+                                            score: nat.score
+                                        },
+                                        subelementos: []
+                                    };
+                                }
+                                naturezasPorElemento[key].subelementos.push(nat);
+                            }
+                        });
+                        
+                        // Ordena os elementos pelo score (decrescente)
+                        const elementosOrdenados = Object.values(naturezasPorElemento)
+                            .sort((a, b) => b.elemento.score - a.elemento.score);
+                        
+                        // Renderiza as naturezas agrupadas
+                        elementosOrdenados.forEach((grupo, index) => {
+                            const elemento = grupo.elemento;
+                            const score = (elemento.score * 100).toFixed(2);
                             const confidenceClass = score > 70 ? 'high' : 
-                                                    score > 40 ? 'medium' : 'low';
+                                                score > 40 ? 'medium' : 'low';
                             
                             html += `
                                 <div class="prediction-item">
                                     <div class="prediction-rank">${index + 1}</div>
                                     <div class="prediction-content">
-                                        <div class="prediction-code"><strong>Código:</strong> ${pred.codigo}</div>
-                                        <div class="prediction-name"><strong>Descrição:</strong> ${pred.nome}</div>
+                                        <div class="prediction-code"><strong>Código:</strong> ${elemento.codigo}</div>
+                                        <div class="prediction-name"><strong>Descrição:</strong> ${elemento.descricao}</div>
                                         <div class="prediction-confidence ${confidenceClass}"><strong>Confiança:</strong> ${score}%</div>
-                                        ${pred.justificativa ? `<div class="prediction-justification"><strong>Justificativa:</strong> ${pred.justificativa}</div>` : ''}
+                                        ${elemento.justificativa ? `<div class="prediction-justification"><strong>Justificativa:</strong> ${elemento.justificativa}</div>` : ''}
+                                    `;
+                            
+                            // Adiciona subelementos
+                            if (grupo.subelementos && grupo.subelementos.length > 0) {
+                                html += `
+                                    <div class="prediction-subelements">
+                                        <strong>Naturezas Completas (c.g.mm.ee.ss):</strong>
+                                        <ul class="subelements-list">
+                                `;
+                                
+                                grupo.subelementos.forEach(sub => {
+                                    html += `
+                                        <li class="subelement-item">
+                                            <div class="subelement-code">${sub.codigo}</div>
+                                            <div class="subelement-desc">${sub.descricao}</div>
+                                        </li>
+                                    `;
+                                });
+                                
+                                html += `
+                                        </ul>
+                                    </div>
+                                `;
+                            }
+                            
+                            html += `
                                     </div>
                                 </div>
                             `;
@@ -880,12 +941,15 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         html += '</div>';
                         
-                        if (result.used_llm) {
-                            html += `<div class="info-box">
-                                <p>Os resultados acima foram refinados usando o modelo ${result.llm_model || 'LLM'} 
-                                para selecionar as naturezas mais adequadas dentre as candidatas identificadas pelo classificador SentenceTransformer.</p>
-                            </div>`;
-                        }
+                        // Adiciona informações sobre o processamento
+                        html += `<div class="info-box">
+                            <p>Os resultados acima foram processados em múltiplas etapas:</p>
+                            <ol>
+                                <li>Classificação inicial com SentenceTransformer para identificar candidatos</li>
+                                ${result.used_llm ? `<li>Refinamento usando o modelo ${result.llm_model || 'LLM'} para selecionar as naturezas mais adequadas</li>` : ''}
+                                ${result.has_subelements ? `<li>Busca de naturezas completas (c.g.mm.ee.ss) para cada natureza selecionada</li>` : ''}
+                            </ol>
+                        </div>`;
                         
                         stResultsContent.innerHTML = html;
                     } else {
@@ -908,8 +972,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         });
-    }
-    
+    }    
     // Adicionar estilos para os resultados
     const style = document.createElement('style');
     style.textContent = `

@@ -562,3 +562,206 @@ class GeminiModel(AIModel):
             
             # Em caso de erro, retorna as 3 melhores opções da lista original
             return sorted(natureza_options, key=lambda x: x.get('confianca', 0), reverse=True)[:3]
+
+    def analyze_natureza_complete(self, description: str, natureza_options: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Analisa uma lista de opções de natureza de despesa completa (incluindo subelementos)
+        usando o modelo Gemini e seleciona as mais adequadas para a descrição fornecida.
+        
+        Args:
+            description: Descrição da despesa
+            natureza_options: Lista de opções de natureza de despesa completa, 
+                            cada uma com 'codigo', 'nome', 'descricao' e outros metadados
+            
+        Returns:
+            List[Dict[str, Any]]: Lista das naturezas mais adequadas, ordenadas por relevância
+        """
+        if self.llm is None and not self.initialize():
+            self.logger.error("Cliente Gemini não inicializado")
+            raise ValueError("Cliente Gemini não inicializado. Verifique a API key.")
+        
+        try:
+            # Importa o Google Generative AI client
+            import google.generativeai as genai
+            
+            # Configura o cliente
+            genai.configure(api_key=self.api_key)
+            
+            # Monta a lista de opções formatada com descrições completas
+            options_text = ""
+            for i, option in enumerate(natureza_options, 1):
+                codigo = option.get('codigo', '')
+                nome = option.get('nome', '')
+                descricao = option.get('descricao', '')
+                options_text += f"{i}. {codigo} - {nome}\n   Descrição: {descricao}\n\n"
+            
+            # Cria o prompt para análise
+            prompt = f"""
+            Com base na descrição de despesa abaixo, analise as opções de natureza de despesa COMPLETAS 
+            (incluindo subelementos) listadas e ordene-as da mais adequada para a menos adequada.
+            
+            ATENÇÃO: Você deve considerar APENAS as naturezas listadas abaixo e suas descrições. 
+            Não inclua naturezas adicionais que não estejam explicitamente listadas.
+            
+            Descrição da despesa:
+            {description}
+            
+            Opções de natureza de despesa (com códigos completos):
+            {options_text}
+            
+            Para cada opção, forneça:
+            1. O código completo da natureza no formato c.g.mm.ee.ss
+            2. Uma justificativa detalhada explicando por que esta natureza é adequada ou não para a descrição fornecida
+            3. Um score de 0 a 100 indicando o grau de adequação
+            
+            Você deve responder com um JSON no seguinte formato:
+            {{
+                "analise": [
+                    {{
+                        "codigo": "código completo da natureza no formato c.g.mm.ee.ss",
+                        "justificativa": "justificativa detalhada",
+                        "score": número entre 0 e 100
+                    }},
+                    ...
+                ]
+            }}
+            
+            Retorne APENAS o JSON, sem texto adicional antes ou depois.
+            """
+            
+            # Cria o modelo e gera a resposta
+            model = genai.GenerativeModel(self.model_name)
+            
+            completion = model.generate_content(
+                [prompt],
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.2,  # Baixa temperatura para resultados mais consistentes
+                    max_output_tokens=2048,
+                )
+            )
+            
+            # Extrai a resposta
+            response_text = completion.text.strip()
+            
+            # Tenta encontrar o JSON na resposta
+            import json
+            import re
+            
+            # Tenta extrair JSON da resposta, mesmo se tiver texto ao redor
+            json_match = re.search(r'({[\s\S]*})', response_text)
+            
+            if json_match:
+                try:
+                    result = json.loads(json_match.group(1))
+                    analysis = result.get('analise', [])
+                    
+                    # Reorganiza a lista de naturezas de acordo com a análise
+                    ranked_options = []
+                    
+                    for analysis_item in analysis:
+                        codigo = analysis_item.get('codigo')
+                        
+                        # Busca a natureza original correspondente
+                        found = False
+                        for option in natureza_options:
+                            if option.get('codigo') == codigo:
+                                # Cria uma cópia com os novos valores
+                                ranked_option = option.copy()
+                                ranked_option['justificativa'] = analysis_item.get('justificativa', '')
+                                ranked_option['score'] = analysis_item.get('score', 0) / 100  # Normaliza para 0-1
+                                ranked_options.append(ranked_option)
+                                found = True
+                                break
+                        
+                        # Se não encontrou, adiciona como nova entrada
+                        if not found and codigo:
+                            # Procura com comparação parcial
+                            for option in natureza_options:
+                                if codigo.startswith(option.get('codigo', '')):
+                                    ranked_option = option.copy()
+                                    ranked_option['justificativa'] = analysis_item.get('justificativa', '')
+                                    ranked_option['score'] = analysis_item.get('score', 0) / 100
+                                    ranked_options.append(ranked_option)
+                                    found = True
+                                    break
+                            
+                            if not found:
+                                # Adiciona mesmo sem correspondência
+                                ranked_options.append({
+                                    'codigo': codigo,
+                                    'nome': f"(Nome não disponível para {codigo})",
+                                    'score': analysis_item.get('score', 0) / 100,
+                                    'justificativa': analysis_item.get('justificativa', '')
+                                })
+                    
+                    # Se não obteve resultados do modelo, retorna as opções originais na ordem fornecida
+                    if not ranked_options:
+                        self.logger.warning("Não foi possível obter ranking do modelo, retornando opções originais")
+                        return natureza_options
+                    
+                    # Retorna as opções ranqueadas
+                    return ranked_options
+                
+                except json.JSONDecodeError:
+                    self.logger.error(f"Falha ao decodificar resposta JSON: {response_text}")
+            
+            # Se não conseguiu extrair JSON, tenta extrair os códigos diretamente usando regex
+            self.logger.warning("Usando extração de código alternativa para Gemini")
+            
+            # Procura por códigos no formato c.g.mm.ee.ss
+            natureza_pattern = r'(\d\.\d\.\d{2}\.\d{2}\.\d{2})'
+            codigo_matches = re.findall(natureza_pattern, response_text)
+            
+            # Se encontrou códigos, reorganiza com base na ordem de aparição
+            if codigo_matches:
+                codigo_ordered = []
+                for codigo in codigo_matches:
+                    # Evita duplicação de códigos
+                    if codigo not in codigo_ordered:
+                        codigo_ordered.append(codigo)
+                
+                # Filtra os resultados para códigos encontrados
+                ranked_options = []
+                for codigo in codigo_ordered:
+                    # Busca a natureza original correspondente
+                    found = False
+                    for option in natureza_options:
+                        if option.get('codigo') == codigo:
+                            ranked_options.append(option)
+                            found = True
+                            break
+                    
+                    # Se não encontrou, adiciona como nova entrada ou procura parcial
+                    if not found:
+                        # Procura com comparação parcial
+                        for option in natureza_options:
+                            if codigo.startswith(option.get('codigo', '')):
+                                ranked_option = option.copy()
+                                ranked_option['codigo'] = codigo  # Atualiza para código completo
+                                ranked_options.append(ranked_option)
+                                found = True
+                                break
+                        
+                        if not found:
+                            # Adiciona mesmo sem correspondência
+                            ranked_options.append({
+                                'codigo': codigo,
+                                'nome': f"(Nome não disponível para {codigo})",
+                                'score': 0.7  # Valor padrão
+                            })
+                
+                # Se encontrou alguma correspondência, retorna
+                if ranked_options:
+                    return ranked_options
+            
+            # Em último caso, retorna as opções originais
+            self.logger.warning("Fallback para opções originais ordenadas")
+            return natureza_options
+        
+        except Exception as e:
+            self.logger.error(f"Erro ao analisar opções de natureza completa com Gemini: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            
+            # Em caso de erro, retorna as opções originais
+            return natureza_options

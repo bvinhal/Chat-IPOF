@@ -253,6 +253,27 @@ class NaturezaProcessor:
         
         return filtered['texto_combinado'].iloc[0]
     
+    def get_orientacao_by_codigo(self, codigo: str) -> Optional[str]:
+        """
+        Obtém o texto combinado para um determinado código de natureza.
+        
+        Args:
+            codigo: Código da natureza de despesa
+            
+        Returns:
+            Optional[str]: Texto combinado ou None se não encontrado
+        """
+        if self.df is None:
+            if not self.load_processed_data():
+                self.logger.error("Sem dados disponíveis")
+                return None
+        
+        filtered = self.df[self.df['codigo'] == codigo]
+        if filtered.empty:
+            return None
+        
+        return filtered['orientacao'].iloc[0]
+        
     def get_all_textos(self) -> List[str]:
         """
         Retorna todos os textos combinados.

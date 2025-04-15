@@ -84,6 +84,22 @@ class AIModel(ABC):
         """
         pass
 
+    @abstractmethod
+    def analyze_natureza_complete(self, description: str, natureza_options: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Analisa uma lista de opções de natureza de despesa completa (incluindo subelementos)
+        e seleciona as mais adequadas para a descrição fornecida.
+        
+        Args:
+            description: Descrição da despesa
+            natureza_options: Lista de opções de natureza de despesa completa, 
+                            cada uma com 'codigo', 'nome', 'descricao' e outros metadados
+            
+        Returns:
+            List[Dict[str, Any]]: Lista das naturezas mais adequadas, ordenadas por relevância
+        """
+        pass
+
     def save_model(self, model_name: str = None) -> bool:
         """
         Salva o modelo treinado para uso posterior.

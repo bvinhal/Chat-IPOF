@@ -739,7 +739,7 @@ def clean_temp_files():
 
     @app.route('/api/test-st-classifier', methods=['POST'])
     def test_st_classifier():
-        """Endpoint para testar o classificador SentenceTransformer com refinamento LLM"""
+        """Endpoint para testar o classificador com busca de naturezas completas"""
         data = request.json
         description = data.get('description')
         
@@ -753,16 +753,19 @@ def clean_temp_files():
             # Inicializa o classificador
             classifier = NaturezaClassifier(chat_controller.current_model_type)
             
-            # Faz a previsão usando o método atualizado que agora inclui análise LLM
-            predictions = classifier.predict(description, top_k=3)
+            # Faz a previsão usando o método atualizado que agora retorna naturezas completas
+            naturezas_completas = classifier.predict(description, top_k=3)
             
-            # Determina se o LLM foi usado verificando presença do campo 'justificativa'
-            used_llm = any('justificativa' in pred for pred in predictions)
+            # Determina informações sobre o processamento para logs e interface
+            used_llm = any('justificativa' in nat and nat['justificativa'] != 'Natureza identificada pelo sistema de classificação' 
+                        for nat in naturezas_completas)
+            has_subelements = any(nat.get('tipo') == 'subelemento' for nat in naturezas_completas)
             
             return jsonify({
                 'success': True,
-                'predictions': predictions,
+                'naturezas_completas': naturezas_completas,
                 'used_llm': used_llm,
+                'has_subelements': has_subelements,
                 'llm_model': chat_controller.current_model_type if used_llm else None
             })
         
@@ -774,7 +777,7 @@ def clean_temp_files():
                 'success': False,
                 'message': f'Erro ao testar classificador: {str(e)}'
             }), 500
-                        
+                                                
 # Executa a limpeza a cada inicio da aplicação
 clean_temp_files()
 
