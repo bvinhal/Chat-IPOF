@@ -1097,3 +1097,32 @@ class NaturezaEvaluator(AIModel):
                 'error': str(e)
             }
 
+    def analyze_natureza_options(self, description: str, natureza_options: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Analisa uma lista de opções de natureza de despesa e seleciona as mais adequadas
+        para a descrição fornecida.
+        
+        Args:
+            description: Descrição da despesa
+            natureza_options: Lista de opções de natureza de despesa, 
+                            cada uma com 'codigo', 'nome' e 'confianca'
+            
+        Returns:
+            List[Dict[str, Any]]: Lista das naturezas mais adequadas, ordenadas por relevância
+        """
+        pass
+
+    def analyze_natureza_complete(self, description: str, natureza_options: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Analisa uma lista de opções de natureza de despesa completa (incluindo subelementos)
+        e seleciona as mais adequadas para a descrição fornecida.
+        
+        Args:
+            description: Descrição da despesa
+            natureza_options: Lista de opções de natureza de despesa completa, 
+                            cada uma com 'codigo', 'nome', 'descricao' e outros metadados
+            
+        Returns:
+            List[Dict[str, Any]]: Lista das naturezas mais adequadas, ordenadas por relevância
+        """
+        pass

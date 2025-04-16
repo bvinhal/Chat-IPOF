@@ -464,6 +464,7 @@ class NaturezaClassifier:
                             'nome': candidate.get('nome', ''),
                             'confianca': candidate.get('confianca', 0.0),
                             'descricao': processor.get_orientacao_by_codigo(codigo_base) or "Não há descrição disponível.",
+                            'texto_referencia': processor.get_orientacao_by_codigo(codigo_base) or "Não há descrição disponível.",
                             'base_code': codigo_base
                         })
                     else:
@@ -474,6 +475,7 @@ class NaturezaClassifier:
                                 descricao = processor.get_orientacao_by_codigo(codigo_base) or "Não há descrição disponível."
                             
                             complete['descricao'] = descricao
+                            complete['texto_referencia'] = descricao
                             complete_candidates.append(complete)
                 
                 self.logger.info(f"Encontradas {len(complete_candidates)} naturezas completas (com subelementos)")
@@ -484,6 +486,7 @@ class NaturezaClassifier:
                 complete_candidates = []
                 for candidate in top_candidates:
                     candidate['descricao'] = "Descrição não disponível devido a erro no processamento."
+                    candidate['texto_referencia'] = "Descrição não disponível devido a erro no processamento."
                     complete_candidates.append(candidate)
             
             # ETAPA 4: Gera embeddings para as naturezas completas e seleciona as mais adequadas

@@ -88,7 +88,7 @@ class NaturezaProcessor:
                     df[col] = df[col].fillna('')
             
             # Combina os campos de texto
-            df['texto_combinado'] = df['Descrição Despesa'] + ' ' + df['Orientação Natureza']
+            df['texto_combinado'] = df['Natureza Despesa (Nome)'] + ' ' + df['Orientação Natureza']
             df['texto_combinado'] = df['texto_combinado'].str.strip()
             
             # Simplifica os nomes das colunas
