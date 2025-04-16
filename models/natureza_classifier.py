@@ -176,8 +176,8 @@ class NaturezaClassifier:
         except Exception as e:
             self.logger.error(f"Erro durante treinamento do classificador: {str(e)}")
             return False
-    '''
-    def predict(self, text: str, top_k: int = 3) -> List[Dict[str, Any]]:
+    
+    def predict_simplify(self, text: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """
         Prediz as naturezas de despesa mais prováveis para um texto e as avalia.
         
@@ -297,7 +297,7 @@ class NaturezaClassifier:
             import traceback
             self.logger.error(traceback.format_exc())
             raise
-    '''
+    
     def predict(self, text: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """
         Prediz as naturezas de despesa mais prováveis para um texto.

@@ -91,14 +91,15 @@ class EnhancedChatController(ChatController):
         recommended = natureza_result.get('recommended', predictions[0] if predictions else None)
         
         # Adiciona o separador e o título da seção
-        formatted_response = recommended.get('justificativa') + "\n\n" # original_response + "\n\n---\n\n"
-        formatted_response += "**Classificação de Natureza de Despesa:**\n\n"
+        #formatted_response = recommended.get('justificativa') + "\n\n" # original_response + "\n\n---\n\n"
+        formatted_response = "**Classificação de Natureza de Despesa:**\n\n"
         
         if recommended:
             formatted_response += (
                 f"Com base na sua consulta, a natureza de despesa mais adequada parece ser:\n\n"
                 f"**{recommended['codigo']} - {recommended['nome']}**\n"
-                f"(Confiança: {recommended['confianca']:.2%})\n\n"
+                f"(Confiança: {recommended['similarity']:.2%})\n\n"
+                f"Justificativa: {recommended['justificativa']}\n\n"
             )
         
         if len(predictions) > 1:
@@ -106,7 +107,8 @@ class EnhancedChatController(ChatController):
             
             for i, pred in enumerate(predictions[1:], 2):
                 formatted_response += f"{i}. **{pred['codigo']} - {pred['nome']}**\n"
-                formatted_response += f"   Confiança: {pred['confianca']:.2%}\n"
+                formatted_response += f"(Confiança: {pred['similarity']:.2%})\n\n"
+                formatted_response += f"Justificativa: {pred['justificativa']}\n\n"
             
             formatted_response += "\nEssas classificações são baseadas na análise do texto fornecido e podem precisar de validação adicional dependendo do contexto específico da despesa."
         
