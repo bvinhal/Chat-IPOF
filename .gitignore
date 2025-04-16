@@ -35,3 +35,7 @@ data/natureza/mcasp_oficial.json
 data/natureza/naturezas_por_elemento.csv
 data/natureza/naturezas_por_elemento.xlsx
 data/natureza/subelementos_goias_processados.json
+data/markdown/
+data/models/OpenAIModel_20250313_144657
+data/texto
+data/training
