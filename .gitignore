@@ -39,3 +39,7 @@ data/markdown/
 data/models/OpenAIModel_20250313_144657
 data/texto
 data/training
+models/__pycache__
+data/natureza/naturezas_por_elemento_bkp.csv
+data/natureza/naturezas_por_elemento_base.csv
+data/natureza/naturezas_por_elemento (modelo).csv
