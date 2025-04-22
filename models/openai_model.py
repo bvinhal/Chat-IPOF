@@ -255,7 +255,7 @@ class OpenAIModel(AIModel):
                     
                     # Chama a API para resumir com parâmetros mais restritos
                     response = client.chat.completions.create(
-                        model="gpt-3.5-turbo",  # Modelo mais rápido e econômico para resumos
+                        model="gpt-4o",#"gpt-3.5-turbo",  # Modelo mais rápido e econômico para resumos
                         messages=[
                             {"role": "system", "content": "Você é um especialista em resumir textos de forma extremamente concisa e precisa."},
                             {"role": "user", "content": summarize_prompt}

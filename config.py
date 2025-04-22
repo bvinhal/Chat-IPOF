@@ -26,7 +26,7 @@ class Config:
     
     # Configurações dos modelos
     DEFAULT_MODEL = os.environ.get('DEFAULT_MODEL') or 'openai'  # claude, openai, gemini
-    OPENAI_MODEL = os.environ.get('OPENAI_MODEL') or 'gpt-3.5-turbo' #'gpt-4'
+    OPENAI_MODEL = os.environ.get('OPENAI_MODEL') or 'gpt-4o'
     CLAUDE_MODEL = os.environ.get('CLAUDE_MODEL') or 'claude-3-haiku-20240307'
     GEMINI_MODEL = os.environ.get('GEMINI_MODEL') or 'gemini-1.5-pro'
     

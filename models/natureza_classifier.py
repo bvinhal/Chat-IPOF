@@ -177,7 +177,34 @@ class NaturezaClassifier:
             self.logger.error(f"Erro durante treinamento do classificador: {str(e)}")
             return False
     
-    def predict_simplify(self, text: str, top_k: int = 3) -> List[Dict[str, Any]]:
+    def predict_classificador_mcasp(self, text: str, top_k: int = 3) -> List[Dict[str, Any]]:
+        """
+        Faz chamada do classificador de despesa do mcasp
+        
+        Args:
+            text: Texto para classificação
+            top_k: Número de naturezas mais prováveis a retornar
+                
+        Returns:
+            List[Dict[str, Any]]: Lista de previsões ordenadas por confiança, incluindo avaliação
+        """
+        if not self.is_trained or self.knn_model is None:
+            self.logger.error("Modelo não treinado. Execute train() primeiro.")
+            raise ValueError("Modelo não treinado")
+        
+        try:
+            from models.classificador_despesa_mcasp import ClassificadorDespesasMCASP
+
+            classificador = ClassificadorDespesasMCASP(self.embedding_provider)
+            return classificador.classificar_despesa(text)
+
+        except Exception as e:
+            self.logger.error(f"Erro ao fazer previsão: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            raise
+
+    def predict(self, text: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """
         Prediz as naturezas de despesa mais prováveis para um texto e as avalia.
         
@@ -298,7 +325,7 @@ class NaturezaClassifier:
             self.logger.error(traceback.format_exc())
             raise
     
-    def predict(self, text: str, top_k: int = 3) -> List[Dict[str, Any]]:
+    def predict_complex(self, text: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """
         Prediz as naturezas de despesa mais prováveis para um texto.
         Fluxo aprimorado com RAG:

@@ -95,7 +95,7 @@ class OpenAIEmbeddingModel(EmbeddingModelBase):
                     
                     # Fazemos a chamada à API para resumir
                     response = self.client.chat.completions.create(
-                        model="gpt-3.5-turbo",  # Usando GPT 3.5 para economizar custos 
+                        model="gpt-4o",#"gpt-3.5-turbo",  # Usando GPT 3.5 para economizar custos 
                         messages=[
                             {"role": "system", "content": "Você é um especialista em finanças públicas e orçamento governamental."},
                             {"role": "user", "content": prompt}

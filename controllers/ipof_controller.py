@@ -237,7 +237,7 @@ class IPOFController:
             
             # Chama a API da OpenAI para resumir o texto
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o",#"gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "Você é um especialista em resumir documentos de contratação pública de forma precisa e factual, sem adicionar informações que não estejam presentes no texto original."},
                     {"role": "user", "content": prompt}

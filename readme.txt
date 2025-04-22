@@ -56,7 +56,7 @@ CLAUDE_API_KEY=sua-chave-do-claude
 GEMINI_API_KEY=sua-chave-do-gemini
 
 # Modelos específicos (opcional)
-OPENAI_MODEL=gpt-4
+OPENAI_MODEL=gpt-4o
 CLAUDE_MODEL=claude-3-haiku-20240307
 GEMINI_MODEL=gemini-pro
 
