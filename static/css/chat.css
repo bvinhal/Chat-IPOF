@@ -521,3 +521,161 @@
 #fileInput {
     display: none;
 }
+
+/* Correções para seguir o padrão de cores verde */
+
+/* 1. Correção do botão "Conversa atual" */
+.conversations-list li.active a {
+    background-color: var(--primary-color); /* Verde escuro em vez de verde claro */
+    color: white;
+}
+
+/* 2. Correção do cabeçalho do chat */
+.chat-header {
+    background-color: var(--primary-color); /* Verde escuro em vez de transparente */
+    color: white;
+    border-bottom: 1px solid #c8e6c9;
+}
+
+.chat-header h2 {
+    color: white; /* Garante que o texto seja branco para melhor contraste */
+    font-weight: 500;
+}
+
+/* 3. Correção das cores das mensagens de chat */
+/* Mensagem do sistema */
+.message.system .message-content {
+    background-color: #f1f8e9;  /* Verde muito claro para mensagens do sistema */
+    color: var(--medium-dark);
+    border-left: 3px solid #a5d6a7;
+}
+
+/* Mensagem do assistente */
+.message.assistant .message-content {
+    background-color: #e8f5e9;  /* Verde claro para mensagens do assistente */
+    color: var(--dark);
+    border-left: 3px solid var(--primary-color);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Mensagem do usuário */
+.message.user .message-content {
+    background-color: white;  /* Branco para mensagens do usuário */
+    color: var(--dark);
+    border-left: 3px solid var(--primary-light);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Indicador de digitação */
+.typing-indicator::before {
+    content: 'Assistente está digitando';
+    font-size: 0.75rem;
+    color: var(--primary-dark);
+    margin-right: 8px;
+}
+
+.typing-indicator {
+    background-color: #f1f8e9;
+}
+
+/* Garantir que os destaques nas mensagens sigam o tema verde */
+.message.assistant .highlight {
+    background-color: rgba(200, 230, 201, 0.5);
+    padding: 0.125rem 0.25rem;
+    border-radius: 3px;
+}
+
+/* Estilos adicionais para melhorar a consistência */
+.chat-input {
+    border-top: 1px solid #c8e6c9;
+    background-color: #f9fbf9;
+}
+
+#userInput {
+    border: 1px solid #c8e6c9;
+}
+
+#userInput:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(27, 94, 32, 0.2);
+}
+
+/* Correções para seguir o padrão de cores verde */
+
+/* 1. Correção do botão "Conversa atual" - verde mais escuro */
+.conversations-list li.active a {
+    background-color: var(--primary-dark); /* Verde muito escuro para maior contraste */
+    color: white;
+}
+
+/* 2. Correção do cabeçalho do chat - seguindo o padrão da seção "Conversas" */
+.chat-header {
+    background-color: #f9fbf9; /* Mesmo fundo da sidebar */
+    border-bottom: 1px solid #c8e6c9;
+    padding: var(--small-padding);
+}
+
+.chat-header h2 {
+    color: var(--primary-dark); /* Mesmo verde escuro dos títulos da sidebar */
+    font-weight: 500;
+    font-size: 1.25rem;
+    margin: 0;
+}
+
+/* 3. Correção das cores das mensagens de chat */
+/* Mensagem do sistema */
+.message.system .message-content {
+    background-color: #f1f8e9;  /* Verde muito claro para mensagens do sistema */
+    color: var(--medium-dark);
+    border-left: 3px solid #a5d6a7;
+}
+
+/* Mensagem do assistente */
+.message.assistant .message-content {
+    background-color: #e8f5e9;  /* Verde claro para mensagens do assistente */
+    color: var(--dark);
+    border-left: 3px solid var(--primary-color);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Mensagem do usuário */
+.message.user .message-content {
+    background-color: white;  /* Branco para mensagens do usuário */
+    color: var(--dark);
+    border-left: 3px solid var(--primary-light);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Indicador de digitação */
+.typing-indicator::before {
+    content: 'Assistente está digitando';
+    font-size: 0.75rem;
+    color: var(--primary-dark);
+    margin-right: 8px;
+}
+
+.typing-indicator {
+    background-color: #f1f8e9;
+}
+
+/* Garantir que os destaques nas mensagens sigam o tema verde */
+.message.assistant .highlight {
+    background-color: rgba(200, 230, 201, 0.5);
+    padding: 0.125rem 0.25rem;
+    border-radius: 3px;
+}
+
+/* Estilos adicionais para melhorar a consistência */
+.chat-input {
+    border-top: 1px solid #c8e6c9;
+    background-color: #f9fbf9;
+}
+
+#userInput {
+    border: 1px solid #c8e6c9;
+}
+
+#userInput:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(27, 94, 32, 0.2);
+}
