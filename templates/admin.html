@@ -11,7 +11,6 @@
             <button class="tab-button active" data-tab="model-training">Treinamento de Modelos</button>
             <button class="tab-button" data-tab="natureza-training">Classificador de Natureza</button>
             <button class="tab-button" data-tab="natureza-evaluator">Avaliador de Natureza</button>
-            <button class="tab-button" data-tab="st-classificador">Classificador SentenceTransformer</button>
             <button class="tab-button" data-tab="manage-models">Gerenciar Modelos</button>
         </div>
         
@@ -128,52 +127,6 @@
             </div>
         </div>
         
-        <div class="tab-content" id="st-classificador">
-            <h3>Treinamento do Classificador com SentenceTransformer</h3>
-            <p>
-                Este treinamento utiliza o SentenceTransformer para classificar naturezas de despesa
-                com base nas descrições contidas no arquivo CSV.
-            </p>
-            
-            <form id="trainSTForm">
-                <div class="form-group">
-                    <label for="stCsvFile">Arquivo CSV de Naturezas:</label>
-                    <input type="file" id="stCsvFile" name="stCsvFile" accept=".csv">
-                    <small>O arquivo deve ter as colunas 'natureza' e 'Descrição'</small>
-                </div>
-                
-                <div class="form-actions">
-                    <button type="submit" class="primary-button">Iniciar Treinamento</button>
-                </div>
-            </form>
-            
-            <div id="stTrainingStatus" class="status-container hidden">
-                <div class="spinner"></div>
-                <p>Treinamento do classificador SentenceTransformer em andamento. Isso pode levar alguns minutos...</p>
-            </div>
-            
-            <h3 class="mt-4">Teste do Classificador</h3>
-            <p>
-                Teste o classificador SentenceTransformer com uma descrição de despesa.
-            </p>
-            
-            <form id="testSTForm">
-                <div class="form-group">
-                    <label for="stTestDescription">Descrição da Despesa:</label>
-                    <textarea id="stTestDescription" name="stTestDescription" rows="4" placeholder="Digite a descrição da despesa para classificação..." required></textarea>
-                </div>
-                
-                <div class="form-actions">
-                    <button type="submit" class="primary-button">Testar Classificação</button>
-                </div>
-            </form>
-            
-            <div id="stTestResults" class="test-results hidden mt-4">
-                <h4>Resultados da Classificação:</h4>
-                <div id="stResultsContent"></div>
-            </div>
-        </div>
-
         <!-- Tab: Gerenciar modelos -->
         <div class="tab-content" id="manage-models">
             <h3>Gerenciar Modelos</h3>
