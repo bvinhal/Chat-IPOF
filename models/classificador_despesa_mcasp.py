@@ -229,25 +229,7 @@ class ClassificadorDespesasMCASP:
                 print(f"Erro ao salvar embeddings em cache: {e}")
         else:
             print("Nenhum item encontrado no MCASP para gerar embeddings.")
-    '''
-    def _restore_mcasp_items_from_cache(self):
-        """Restaura os itens completos do MCASP a partir dos textos carregados do cache"""
-        if not self.mcasp_texts or not self.mcasp_data:
-            return
 
-        # Mapear códigos para itens completos para cada tipo
-        item_maps = {}
-        for tipo in ["categorias", "grupos", "modalidades", "elementos"]:
-            if tipo in self.mcasp_data:
-                item_maps[tipo] = {item["codigo"]: item for item in self.mcasp_data[tipo]}
-
-        # Atualizar os itens simplificados com os completos
-        for item in self.mcasp_texts:
-            tipo = item["tipo"]
-            codigo = item["codigo"]
-            if tipo in item_maps and codigo in item_maps[tipo]:
-                item["item"] = item_maps[tipo][codigo]
-    '''
     def _init_llm(self):
         """Inicializa o modelo de linguagem baseado no provedor escolhido"""
         try:
@@ -714,11 +696,12 @@ class ClassificadorDespesasMCASP:
                 # Adicionar os subelementos escolhidos como um campo separado no resultado
                 resultado_final["melhores_subelementos"] = [
                     {
-                        "codigo": sub.get("codigo", ""),
-                        "descricao": sub.get("descricao", ""),
+                        "codigo": sub.get("codigo_completo", ""),
+                        "nome": sub.get("descricao", ""),
                         "codigo_completo": sub.get("codigo_completo", ""),
-                        "similaridade": sub.get("similaridade", 0),
+                        "confianca": sub.get("similaridade", 0),
                         "classificacao_associada": sub.get("classificacao_ref", {}).get("codigo_completo", ""),
+                        "texto_referencia": sub.get("descricao", ""),
                         "justificativa": sub.get("justificativa", "")
                     } for sub in melhores_subelementos
                 ]

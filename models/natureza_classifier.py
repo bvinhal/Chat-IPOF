@@ -16,8 +16,6 @@ from models.openai_embedding_model import OpenAIEmbeddingModel
 from models.claude_embedding_model import ClaudeEmbeddingModel
 from models.gemini_embedding_model import GeminiEmbeddingModel
 from models.natureza_processor import NaturezaProcessor
-from models.sentence_transformer_classifier import SentenceTransformerClassifier
-
 # Configuração de logging
 logging.basicConfig(
     level=logging.INFO, 
@@ -177,7 +175,7 @@ class NaturezaClassifier:
             self.logger.error(f"Erro durante treinamento do classificador: {str(e)}")
             return False
     
-    def predict_classificador_mcasp(self, text: str, top_k: int = 3) -> List[Dict[str, Any]]:
+    def predict_complex_mcasp(self, text: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """
         Faz chamada do classificador de despesa do mcasp
         
@@ -196,7 +194,8 @@ class NaturezaClassifier:
             from models.classificador_despesa_mcasp import ClassificadorDespesasMCASP
 
             classificador = ClassificadorDespesasMCASP(self.embedding_provider)
-            return classificador.classificar_despesa(text)
+            result = classificador.classificar_despesa(text)
+            return result["melhores_subelementos"]
 
         except Exception as e:
             self.logger.error(f"Erro ao fazer previsão: {str(e)}")
@@ -324,278 +323,7 @@ class NaturezaClassifier:
             import traceback
             self.logger.error(traceback.format_exc())
             raise
-    
-    def predict_complex(self, text: str, top_k: int = 3) -> List[Dict[str, Any]]:
-        """
-        Prediz as naturezas de despesa mais prováveis para um texto.
-        Fluxo aprimorado com RAG:
-        1. Usa o SentenceTransformerClassifier para obter candidatos iniciais
-        2. Usa o modelo LLM para selecionar os melhores dentre esses candidatos
-        3. Busca as naturezas completas (com subelementos) para cada candidato selecionado
-        4. Gera embeddings para as naturezas completas e seleciona as mais adequadas
-        5. Usa o modelo RAG para definir a ordem final das naturezas mais apropriadas
-        
-        Args:
-            text: Texto para classificação
-            top_k: Número de naturezas mais prováveis a retornar
-                
-        Returns:
-            List[Dict[str, Any]]: Lista de previsões ordenadas por relevância
-        """
-        if not self.is_trained or self.knn_model is None:
-            # Tenta carregar o modelo se não estiver treinado
-            if not self.load_model():
-                self.logger.error("Modelo não treinado e não foi possível carregar")
-                raise ValueError("Modelo não treinado e não foi possível carregar")
-        
-        try:
-            # ETAPA 1: Usa o SentenceTransformerClassifier para obter candidatos iniciais
-            st_classifier = SentenceTransformerClassifier()
-            
-            # Número de candidatos a serem selecionados na primeira etapa
-            # Vamos pegar mais do que o resultado final para dar mais opções ao LLM
-            intermediate_k = 10
-            
-            try:
-                # Obtém previsões do SentenceTransformer (10 candidatos)
-                st_predictions = st_classifier.predict(text, top_k=intermediate_k)
-                self.logger.info(f"SentenceTransformer retornou {len(st_predictions)} candidatos iniciais")
-                
-                # Se não tiver candidatos suficientes, tenta o método original como fallback
-                if len(st_predictions) < 3:
-                    self.logger.warning("Poucos candidatos do SentenceTransformer, usando método original")
-                    raise Exception("Poucos candidatos")
-                
-            except Exception as st_error:
-                # Se falhar com o SentenceTransformer, usa o método original como fallback
-                self.logger.warning(f"Erro ao usar SentenceTransformerClassifier: {str(st_error)}. Usando método original como fallback.")
-                
-                # Parte original: Gera embedding para o texto de consulta
-                query_embedding = self.embedding_model.get_embeddings([text])
-                
-                # Normaliza o embedding
-                query_embedding = normalize(query_embedding)
-                
-                # Encontra os k vizinhos mais próximos
-                distances, indices = self.knn_model.kneighbors(
-                    query_embedding, 
-                    n_neighbors=min(intermediate_k, len(self.embeddings))
-                )
-                
-                # Converte distâncias de cosseno para similaridades
-                similarities = 1 - distances[0]
-                
-                # Obtém os códigos e textos correspondentes
-                result_indices = indices[0]
-                st_predictions = []
-                
-                for i, idx in enumerate(result_indices):
-                    codigo = self.codigos[idx]
-                    similarity = similarities[i]
-                    
-                    # Busca o nome correspondente ao código
-                    nome = self.code_name_mapping.get(codigo, "Nome não encontrado")
-                    
-                    st_predictions.append({
-                        'codigo': codigo,
-                        'nome': nome,
-                        'confianca': float(similarity),
-                        'texto_referencia': self.texts[idx]
-                    })
-            
-            # ETAPA 2: Usa o modelo LLM para refinar a seleção dos candidatos iniciais
-            chat_controller_instance = None
-            try:
-                # Importa o módulo necessário
-                import sys
-                sys.path.append('.')
-                
-                # Obtém o controlador de chat atual
-                
-                # Tenta obter uma instância existente ou criar uma nova
-                try:
-                    # Tenta importar a instância do app.py
-                    from app import chat_controller
-                    chat_controller_instance = chat_controller
-                    self.logger.info("Usando instância do chat_controller de app.py")
-                except ImportError:
-                    self.logger.warning("Não foi possível importar chat_controller de app.py")
-                    # Tenta criar uma nova instância
-                    try:
-                        from controllers.enhanced_chat_controller import EnhancedChatController
-                        chat_controller_instance = EnhancedChatController()
-                        self.logger.info("Criada nova instância de EnhancedChatController")
-                    except Exception as controller_error:
-                        self.logger.error(f"Erro ao criar EnhancedChatController: {str(controller_error)}")
-                
-                # Se temos uma instância válida do controlador, usa o modelo atual para análise
-                if chat_controller_instance and chat_controller_instance.current_model:
-                    self.logger.info(f"Usando modelo {chat_controller_instance.current_model_type} para análise LLM")
-                    
-                    # Usa o modelo para analisar as opções iniciais
-                    initial_results = chat_controller_instance.current_model.analyze_natureza_options(
-                        text, st_predictions
-                    )
-                    
-                    # Verifica se temos resultados válidos
-                    if initial_results and len(initial_results) > 0:
-                        self.logger.info(f"Análise LLM concluída com sucesso, retornando {len(initial_results)} candidatos intermediários")
-                        st_predictions = initial_results
-            
-            except Exception as llm_error:
-                self.logger.error(f"Erro na etapa de análise LLM inicial: {str(llm_error)}")
-                self.logger.info("Continuando com candidatos originais do SentenceTransformer")
-            
-            # ETAPA 3: Busca naturezas completas (com subelemento) para cada candidato
-            try:
-                # Importar o processador de natureza
-                from models.natureza_processor import NaturezaProcessor
-                
-                # Obtém os top_k * 2 candidatos iniciais (para ter margem)
-                top_candidates = st_predictions[:top_k * 2]
-                
-                # Inicializa o processador
-                processor = NaturezaProcessor()
-                processor.load_processed_data()
-                
-                # Busca as naturezas completas (com subelementos) para cada candidato
-                complete_candidates = []
-                
-                # Simula uma base de naturezas completas (subelementos)
-                # Em um ambiente real, isso seria buscado de uma base de dados
-                complete_naturezas = {}
-                
-                # Obtém todos os códigos de natureza disponíveis
-                all_codigos = processor.get_all_codigos()
-                
-                # Para cada candidato, busca as naturezas completas correspondentes
-                for candidate in top_candidates:
-                    codigo_base = candidate.get('codigo', '')
-                    
-                    # Procura naturezas que começam com o código base (são subelementos)
-                    matching_completes = []
-                    for codigo in all_codigos:
-                        if codigo.startswith(codigo_base): #and len(codigo.split('.')) > len(codigo_base.split('.')):
-                            natureza_info = {
-                                'codigo': codigo,
-                                'nome': processor.get_code_name_mapping().get(codigo, f"Subelemento de {codigo_base}"),
-                                'confianca': candidate.get('confianca', 0.0) * 0.9,  # Reduz um pouco a confiança
-                                'base_code': codigo_base
-                            }
-                            matching_completes.append(natureza_info)
-                    
-                    # Se não encontrar subelementos, usa o próprio código base
-                    if not matching_completes:
-                        complete_candidates.append({
-                            'codigo': codigo_base,
-                            'nome': candidate.get('nome', ''),
-                            'confianca': candidate.get('confianca', 0.0),
-                            'descricao': processor.get_orientacao_by_codigo(codigo_base) or "Não há descrição disponível.",
-                            'texto_referencia': processor.get_orientacao_by_codigo(codigo_base) or "Não há descrição disponível.",
-                            'base_code': codigo_base
-                        })
-                    else:
-                        # Adiciona os subelementos encontrados
-                        for complete in matching_completes:
-                            descricao = processor.get_orientacao_by_codigo(complete['codigo'])
-                            if not descricao:  # Se não tem descrição específica, usa a do código base
-                                descricao = processor.get_orientacao_by_codigo(codigo_base) or "Não há descrição disponível."
-                            
-                            complete['descricao'] = descricao
-                            complete['texto_referencia'] = descricao
-                            complete_candidates.append(complete)
-                
-                self.logger.info(f"Encontradas {len(complete_candidates)} naturezas completas (com subelementos)")
-                
-            except Exception as complete_error:
-                self.logger.error(f"Erro ao buscar naturezas completas: {str(complete_error)}")
-                # Em caso de erro, continua com os candidatos originais
-                complete_candidates = []
-                for candidate in top_candidates:
-                    candidate['descricao'] = "Descrição não disponível devido a erro no processamento."
-                    candidate['texto_referencia'] = "Descrição não disponível devido a erro no processamento."
-                    complete_candidates.append(candidate)
-            
-            # ETAPA 4: Gera embeddings para as naturezas completas e seleciona as mais adequadas
-            try:
-                # Se temos poucos candidatos, não precisamos fazer esta etapa
-                if len(complete_candidates) <= top_k:
-                    self.logger.info(f"Apenas {len(complete_candidates)} candidatos completos disponíveis, pulando etapa de embeddings")
-                    selected_candidates = complete_candidates
-                else:
-                    # Gera embeddings para o texto de consulta
-                    query_embedding = self.embedding_model.get_embeddings([text])
-                    query_embedding = normalize(query_embedding)
-                    
-                    # Prepara textos das naturezas completas para embeddings
-                    candidate_texts = []
-                    for candidate in complete_candidates:
-                        # Combina código, nome e descrição
-                        combined_text = f"{candidate['codigo']} - {candidate['nome']}\n{candidate['descricao']}"
-                        candidate_texts.append(combined_text)
-                    
-                    # Gera embeddings para as naturezas completas
-                    candidate_embeddings = self.embedding_model.get_embeddings(candidate_texts)
-                    candidate_embeddings = normalize(candidate_embeddings)
-                    
-                    # Calcula similaridade de cosseno
-                    from sklearn.metrics.pairwise import cosine_similarity
-                    similarities = cosine_similarity(query_embedding, candidate_embeddings)[0]
-                    
-                    # Ordena os candidatos por similaridade
-                    candidate_with_similarities = []
-                    for i, candidate in enumerate(complete_candidates):
-                        candidate_with_sim = candidate.copy()
-                        candidate_with_sim['similarity'] = similarities[i]
-                        candidate_with_similarities.append(candidate_with_sim)
-                    
-                    # Ordena por similaridade, depois por confiança original
-                    sorted_candidates = sorted(
-                        candidate_with_similarities, 
-                        key=lambda x: (-x['similarity'], -x['confianca'])
-                    )
-                    
-                    # Seleciona os top_k candidatos mais similares
-                    selected_candidates = sorted_candidates[:top_k]
-                    self.logger.info(f"Selecionados {len(selected_candidates)} candidatos após análise de embeddings")
-            
-            except Exception as embedding_error:
-                self.logger.error(f"Erro ao gerar embeddings para naturezas completas: {str(embedding_error)}")
-                # Em caso de erro, seleciona os candidatos por confiança original
-                selected_candidates = sorted(complete_candidates, key=lambda x: -x['confianca'])[:top_k]
-            
-            # ETAPA 5: Usa o modelo RAG para definir a ordem final das naturezas mais apropriadas
-            try:
-                # Verifica se temos um modelo e controlador válido
-                if chat_controller_instance and chat_controller_instance.current_model:
-                    self.logger.info(f"Usando modelo RAG {chat_controller_instance.current_model_type} para ordenação final")
-                    
-                    # Chama o método específico de análise para naturezas completas
-                    if hasattr(chat_controller_instance.current_model, 'analyze_natureza_complete'):
-                        final_results = chat_controller_instance.current_model.analyze_natureza_complete(
-                            text, selected_candidates
-                        )
-                        
-                        # Verifica se temos resultados válidos
-                        if final_results and len(final_results) > 0:
-                            self.logger.info(f"Análise RAG final concluída com sucesso, retornando {len(final_results)} resultados")
-                            # Limita ao número solicitado
-                            return final_results[:top_k]
-                    else:
-                        self.logger.warning(f"Modelo {chat_controller_instance.current_model_type} não implementa analyze_natureza_complete")
-            
-            except Exception as rag_error:
-                self.logger.error(f"Erro na etapa final de análise RAG: {str(rag_error)}")
-            
-            # Se a etapa 5 falhar ou não for possível, retorna os candidatos selecionados na etapa 4
-            return selected_candidates[:top_k]
-            
-        except Exception as e:
-            self.logger.error(f"Erro global ao fazer previsão: {str(e)}")
-            import traceback
-            self.logger.error(traceback.format_exc())
-            raise
-                                                    
+                                                     
     def save_model(self) -> bool:
         """
         Salva o modelo treinado.

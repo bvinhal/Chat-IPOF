@@ -21,7 +21,6 @@ from models.natureza_classifier import NaturezaClassifier
 from models.ipof_model import IPOF, ParcelaIPOF
 from models.chat_natureza_handler import ChatNaturezaHandler
 from controllers.natureza_evaluator_controller import NaturezaEvaluatorController
-from models.sentence_transformer_classifier import SentenceTransformerClassifier
 
 # Cria os diretórios necessários se não existirem
 os.makedirs(active_config.DATA_DIR, exist_ok=True)
@@ -700,84 +699,7 @@ def clean_temp_files():
             'success': False,
             'message': 'Formato de arquivo não suportado. Use .csv'
         }), 400
-
-    @app.route('/api/train-st-classifier', methods=['POST'])
-    def train_st_classifier():
-        """Endpoint para treinar o classificador SentenceTransformer"""
-        data = request.json
-        csv_path = data.get('csv_path')
-        
-        # Verifica se o caminho do arquivo foi fornecido
-        if not csv_path:
-            # Se não foi fornecido um caminho específico, usa o arquivo padrão
-            csv_path = os.path.join(active_config.DATA_DIR, 'natureza', 'naturezas_por_elemento.csv')
-        
-        try:
-            # Inicializa o classificador
-            classifier = SentenceTransformerClassifier()
-            
-            # Inicia o treinamento
-            result = classifier.train(csv_path)
-            
-            if result:
-                return jsonify({
-                    'success': True,
-                    'message': 'Classificador SentenceTransformer treinado com sucesso'
-                })
-            else:
-                return jsonify({
-                    'success': False,
-                    'message': 'Falha ao treinar classificador SentenceTransformer'
-                }), 400
-        
-        except Exception as e:
-            app.logger.error(f"Erro ao treinar classificador SentenceTransformer: {str(e)}")
-            return jsonify({
-                'success': False,
-                'message': f'Erro ao treinar classificador: {str(e)}'
-            }), 500
-
-    @app.route('/api/test-st-classifier', methods=['POST'])
-    def test_st_classifier():
-        """Endpoint para testar o classificador com busca de naturezas completas"""
-        data = request.json
-        description = data.get('description')
-        
-        if not description:
-            return jsonify({
-                'success': False,
-                'message': 'Descrição não fornecida'
-            }), 400
-        
-        try:
-            # Inicializa o classificador
-            classifier = NaturezaClassifier(chat_controller.current_model_type)
-            
-            # Faz a previsão usando o método atualizado que agora retorna naturezas completas
-            naturezas_completas = classifier.predict(description, top_k=3)
-            
-            # Determina informações sobre o processamento para logs e interface
-            used_llm = any('justificativa' in nat and nat['justificativa'] != 'Natureza identificada pelo sistema de classificação' 
-                        for nat in naturezas_completas)
-            has_subelements = any(nat.get('tipo') == 'subelemento' for nat in naturezas_completas)
-            
-            return jsonify({
-                'success': True,
-                'naturezas_completas': naturezas_completas,
-                'used_llm': used_llm,
-                'has_subelements': has_subelements,
-                'llm_model': chat_controller.current_model_type if used_llm else None
-            })
-        
-        except Exception as e:
-            app.logger.error(f"Erro ao testar classificador: {str(e)}")
-            import traceback
-            app.logger.error(traceback.format_exc())
-            return jsonify({
-                'success': False,
-                'message': f'Erro ao testar classificador: {str(e)}'
-            }), 500
-                                                
+                                              
 # Executa a limpeza a cada inicio da aplicação
 clean_temp_files()
 
