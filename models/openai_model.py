@@ -245,7 +245,8 @@ class OpenAIModel(AIModel):
                     summarize_prompt = f"""
                     IMPORTANTE: Resuma a seguinte consulta em NO MÁXIMO {target_length} caracteres.
                     Priorize os pontos principais, palavras-chave e parâmetros essenciais.
-                    Mantenha apenas as informações absolutamente cruciais.
+                    Mantenha apenas as informações absolutamente cruciais. 
+                    Tente encontrar as informações de valor total, quantidade de meses e data de inicio. 
                     
                     CONSULTA ORIGINAL:
                     {query}

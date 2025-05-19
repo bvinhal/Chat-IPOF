@@ -107,12 +107,12 @@ class IPOFController:
         
         # Retorna mensagem solicitando a descrição
         return (
-            "Vamos iniciar a criação de um novo IPOF.\n\n"
-            "Por favor, informe a descrição da despesa ou anexe um documento "
-            "(Termo de Referência, ETP, Contrato ou outro) que contenha a descrição.\n\n"
-            "O documento pode ser nos formatos DOC, DOCX ou PDF.\n\n"
-            "A qualquer momento, você pode digitar 'cancelar' para interromper a criação do IPOF "
-            "ou 'reiniciar' para começar novamente."
+            "Vamos lá começar a criar um novo IPOF? \n\n"
+            "Me diga qual é a descrição da despesa ou, se preferir, envie um documento "
+            "(Termo de Referência, ETP, Contrato, DOD ou outro) que traga essa informação.\n\n"
+            "Pode mandar nos formatos DOC, DOCX ou PDF, tá bom?\n\n"
+            "Ah, e se quiser parar tudo, é só digitar 'cancelar'. \n"
+            "Se quiser recomeçar do zero, digite 'reiniciar'."
         )
     
     def processar_mensagem(self, mensagem: str, ai_model=None) -> str:
@@ -206,24 +206,6 @@ class IPOFController:
             # Inicializa o cliente OpenAI
             client = OpenAI(api_key=active_config.OPENAI_API_KEY)
             
-            # Extrai valores usando funções especializadas
-            valor_identificado = extract_valor_monetario(texto)
-            meses_identificados = extract_meses(texto)
-            data_inicio = extract_data_inicio(texto)
-            data_termino = extract_data_termino(texto)
-            
-            # Logs para diagnóstico
-            self.logger.info(f"Valor monetário extraído: {valor_identificado}")
-            self.logger.info(f"Meses identificados: {meses_identificados}")
-            self.logger.info(f"Data início identificada: {data_inicio}")
-            self.logger.info(f"Data término identificada: {data_termino}")
-            
-            # Se temos data de início e término, calcula a quantidade de meses
-            if data_inicio and data_termino:
-                meses_calculados = calcular_quantidade_meses(data_inicio, data_termino)
-                # Substitui a quantidade identificada diretamente pelo valor calculado
-                meses_identificados = meses_calculados
-                self.logger.info(f"Meses calculados a partir de datas: {meses_calculados}")
             
             # Cria um prompt para resumir o texto que seja fiel ao conteúdo original
             prompt = (
@@ -231,7 +213,8 @@ class IPOFController:
                 f"IMPORTANTE: Não infira, crie ou adicione informações que não estejam presentes no texto original. "
                 f"Especialmente, não mencione valores monetários ou períodos de tempo a menos que estejam explicitamente "
                 f"mencionados no texto. O resumo deve ser factual e baseado apenas no que está explicitamente contido "
-                f"no texto original.\n\n"
+                f"no texto original. Identifique se possível o valor total da despesa, a quantidade de meses e a data  "
+                f"de início e término. Se encontradas, estas informações devem constar no resumo. \n\n"
                 f"Texto original:\n{texto}"
             )
             
@@ -251,6 +234,26 @@ class IPOFController:
             
             # Formata o resumo para incluir informações sobre valor e meses apenas se foram realmente encontrados
             resumo_formatado = resumo
+
+            # Extrai valores usando funções especializadas
+            val = f'valor total 7.667.175,12 {texto}'
+            valor_identificado = extract_valor_monetario(resumo)
+            meses_identificados = extract_meses(resumo)
+            data_inicio = extract_data_inicio(resumo)
+            data_termino = extract_data_termino(resumo)
+            
+            # Logs para diagnóstico
+            self.logger.info(f"Valor monetário extraído: {valor_identificado}")
+            self.logger.info(f"Meses identificados: {meses_identificados}")
+            self.logger.info(f"Data início identificada: {data_inicio}")
+            self.logger.info(f"Data término identificada: {data_termino}")
+            
+            # Se temos data de início e término, calcula a quantidade de meses
+            if data_inicio and data_termino:
+                meses_calculados = calcular_quantidade_meses(data_inicio, data_termino)
+                # Substitui a quantidade identificada diretamente pelo valor calculado
+                meses_identificados = meses_calculados
+                self.logger.info(f"Meses calculados a partir de datas: {meses_calculados}")
             
             # Adiciona informações sobre valor e meses ao final do resumo, apenas se foram realmente encontrados
             if valor_identificado:
