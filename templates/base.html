@@ -3,12 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Assistente de Orçamento Público{% endblock %}</title>
+    <title>{% block title %}NEXUS AI Orçamentário{% endblock %}</title>
     
-    <!-- Fontes do Google -->
+    <!-- Meta tags para SEO e performance -->
+    <meta name="description" content="Sistema de Inteligência Artificial para Gestão Orçamentária Inteligente">
+    <meta name="keywords" content="IA, Orçamento, Público, Gestão, Inteligência Artificial">
+    <meta name="theme-color" content="#667eea">
+    
+    <!-- Preload de fontes críticas -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     
     <!-- CSS Principal -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
@@ -16,22 +21,46 @@
     <!-- CSS Específico da Página -->
     {% block extra_css %}{% endblock %}
     
-    <!-- Ícones -->
+    <!-- Ícones modernos -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Favicon futurista -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
 </head>
 <body>
     <header class="app-header">
         <div class="container">
             <div class="header-content">
                 <div class="logo">
-                    <h1>Assistente Orçamentário</h1>
+                    <h1>NEXUS AI</h1>
+                    <span style="font-size: 0.75rem; color: var(--medium-light); font-weight: 500; margin-left: 0.5rem;">Orçamentário</span>
                 </div>
+                
                 <nav class="main-nav">
                     <ul>
-                        <li><a href="{{ url_for('index') }}" {% if request.path == url_for('index') %}class="active"{% endif %}>Início</a></li>
-                        <li><a href="{{ url_for('chat') }}" {% if request.path == url_for('chat') %}class="active"{% endif %}>Chat</a></li>
+                        <li><a href="{{ url_for('index') }}" {% if request.endpoint == 'index' %}class="active"{% endif %}>
+                            <i class="fas fa-home"></i> Início
+                        </a></li>
+                        <li><a href="{{ url_for('chat') }}" {% if request.endpoint == 'chat' %}class="active"{% endif %}>
+                            <i class="fas fa-comments"></i> Chat IA
+                        </a></li>
+                        <li><a href="{{ url_for('admin_panel') }}" {% if request.endpoint == 'admin_panel' %}class="active"{% endif %}>
+                            <i class="fas fa-cogs"></i> Admin
+                        </a></li>
                     </ul>
                 </nav>
+                
+                <!-- Seletor de modelo integrado -->
+                <div class="model-selector" id="headerModelSelector">
+                    <span class="model-selector-label">Modelo IA</span>
+                    <div class="model-selector-current" id="headerCurrentModel">
+                        <div class="model-selector-icon">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <span id="headerModelName">Carregando...</span>
+                        <i class="fas fa-chevron-down" style="font-size: 0.75rem; margin-left: 0.25rem;"></i>
+                    </div>
+                </div>
             </div>
         </div>
     </header>
@@ -44,14 +73,319 @@
 
     <footer class="app-footer">
         <div class="container">
-            <p>&copy; Assistente de Orçamento Público - Desenvolvido para o Setor Público</p>
+            <p>&copy; 2024 NEXUS AI Orçamentário - Sistema de Inteligência Artificial para Gestão Orçamentária Inteligente</p>
         </div>
     </footer>
+
+    <!-- Modal para seleção de modelo no header -->
+    <div id="headerModelModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" id="closeHeaderModelModal">&times;</span>
+            <h3 style="text-align: center; margin-bottom: 1.5rem;">
+                <i class="fas fa-robot" style="margin-right: 0.5rem; color: var(--primary-solid);"></i>
+                Selecionar Modelo de IA
+            </h3>
+            
+            <div id="headerAvailableModelsList" class="models-list">
+                <div class="spinner"></div>
+                <p style="text-align: center; color: var(--medium-light);">Carregando modelos disponíveis...</p>
+            </div>
+            
+            <div style="text-align: center; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--glass-border);">
+                <small style="color: var(--medium); font-size: 0.8rem;">
+                    <i class="fas fa-info-circle"></i>
+                    Os modelos são treinados especificamente para orçamento público
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Indicador de carregamento global -->
+    <div id="globalLoader" class="global-loader hidden">
+        <div class="loader-content">
+            <div class="spinner"></div>
+            <p>Processando com IA...</p>
+        </div>
+    </div>
+
+    <!-- Notificação global -->
+    <div id="globalNotification" class="notification">
+        <div class="notification-content">
+            <p></p>
+            <button class="close-notification">&times;</button>
+        </div>
+    </div>
 
     <!-- JavaScript Principal -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     
     <!-- JavaScript Específico da Página -->
     {% block extra_js %}{% endblock %}
+    
+    <!-- Script para seletor de modelo no header -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const headerModelSelector = document.getElementById('headerCurrentModel');
+            const headerModelModal = document.getElementById('headerModelModal');
+            const closeHeaderModelModal = document.getElementById('closeHeaderModelModal');
+            const headerAvailableModelsList = document.getElementById('headerAvailableModelsList');
+            const headerModelName = document.getElementById('headerModelName');
+            
+            // Função para carregar o modelo atual no header
+            async function loadHeaderCurrentModel() {
+                try {
+                    const response = await fetch('/api/current-model');
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data && data.model) {
+                            const modelText = `${data.model.type.toUpperCase()}`;
+                            headerModelName.textContent = modelText;
+                            
+                            // Atualizar ícone baseado no tipo de modelo
+                            const icon = headerModelSelector.querySelector('.model-selector-icon i');
+                            switch(data.model.type.toLowerCase()) {
+                                case 'claude':
+                                    icon.className = 'fas fa-brain';
+                                    break;
+                                case 'openai':
+                                    icon.className = 'fas fa-bolt';
+                                    break;
+                                case 'gemini':
+                                    icon.className = 'fas fa-gem';
+                                    break;
+                                default:
+                                    icon.className = 'fas fa-robot';
+                            }
+                        } else {
+                            headerModelName.textContent = 'Nenhum modelo';
+                        }
+                    }
+                } catch (error) {
+                    console.error('Erro ao carregar modelo atual:', error);
+                    headerModelName.textContent = 'Erro';
+                }
+            }
+            
+            // Função para carregar modelos disponíveis no header
+            async function loadHeaderAvailableModels() {
+                headerAvailableModelsList.innerHTML = `
+                    <div class="spinner"></div>
+                    <p style="text-align: center; color: var(--medium-light);">Carregando modelos disponíveis...</p>
+                `;
+                
+                try {
+                    const response = await fetch('/api/models');
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        if (!data.models || data.models.length === 0) {
+                            headerAvailableModelsList.innerHTML = `
+                                <div class="status-container info">
+                                    <i class="fas fa-info-circle"></i>
+                                    <p>Nenhum modelo treinado disponível.</p>
+                                    <small>Configure e treine modelos no painel administrativo.</small>
+                                </div>
+                            `;
+                            return;
+                        }
+                        
+                        // Organizar modelos por tipo
+                        const modelsByType = {};
+                        data.models.forEach(model => {
+                            if (!modelsByType[model.type]) {
+                                modelsByType[model.type] = [];
+                            }
+                            modelsByType[model.type].push(model);
+                        });
+                        
+                        let modelsHtml = '';
+                        for (const [type, models] of Object.entries(modelsByType)) {
+                            modelsHtml += `
+                                <div class="model-type-section" style="margin-bottom: 1.5rem;">
+                                    <h4 style="font-size: 0.9rem; color: var(--primary-light); margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                                        <i class="fas fa-${getModelIcon(type)}"></i> ${type.toUpperCase()}
+                                    </h4>
+                            `;
+                            
+                            models.forEach(model => {
+                                modelsHtml += `
+                                    <div class="model-item" style="margin-bottom: 0.75rem; cursor: pointer;" data-model-type="${model.type}">
+                                        <div class="model-info">
+                                            <div class="model-name">${model.name}</div>
+                                            <div class="model-meta">Criado: ${model.created}</div>
+                                        </div>
+                                        <div class="model-actions">
+                                            <button class="btn btn-primary small-button select-header-model-btn" data-model-type="${model.type}">
+                                                <i class="fas fa-check"></i> Selecionar
+                                            </button>
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            
+                            modelsHtml += '</div>';
+                        }
+                        
+                        headerAvailableModelsList.innerHTML = modelsHtml;
+                        
+                        // Adicionar event listeners
+                        document.querySelectorAll('.select-header-model-btn').forEach(btn => {
+                            btn.addEventListener('click', function() {
+                                const modelType = this.getAttribute('data-model-type');
+                                changeHeaderModel(modelType);
+                            });
+                        });
+                        
+                    } else {
+                        throw new Error('Falha ao carregar modelos');
+                    }
+                } catch (error) {
+                    console.error('Erro ao carregar modelos:', error);
+                    headerAvailableModelsList.innerHTML = `
+                        <div class="status-container error">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <p>Erro ao carregar modelos: ${error.message}</p>
+                        </div>
+                    `;
+                }
+            }
+            
+            // Função para obter ícone do modelo
+            function getModelIcon(type) {
+                switch(type.toLowerCase()) {
+                    case 'claude': return 'brain';
+                    case 'openai': return 'bolt';
+                    case 'gemini': return 'gem';
+                    default: return 'robot';
+                }
+            }
+            
+            // Função para alterar modelo
+            async function changeHeaderModel(modelType) {
+                try {
+                    // Mostrar loader
+                    const btn = document.querySelector(`[data-model-type="${modelType}"]`);
+                    const originalText = btn.innerHTML;
+                    btn.innerHTML = '<i class="spinner" style="width: 12px; height: 12px;"></i> Alterando...';
+                    btn.disabled = true;
+                    
+                    const response = await fetch('/api/change-model', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ model_type: modelType }),
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        showGlobalNotification(data.message, 'success');
+                        loadHeaderCurrentModel();
+                        headerModelModal.style.display = 'none';
+                        
+                        // Recarregar a página se estivermos no chat para atualizar o contexto
+                        if (window.location.pathname.includes('/chat')) {
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 1000);
+                        }
+                    } else {
+                        showGlobalNotification(data.message, 'error');
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    }
+                } catch (error) {
+                    console.error('Erro ao alterar modelo:', error);
+                    showGlobalNotification(`Erro ao alterar modelo: ${error.message}`, 'error');
+                }
+            }
+            
+            // Event listeners
+            if (headerModelSelector) {
+                headerModelSelector.addEventListener('click', function() {
+                    loadHeaderAvailableModels();
+                    headerModelModal.style.display = 'block';
+                });
+            }
+            
+            if (closeHeaderModelModal) {
+                closeHeaderModelModal.addEventListener('click', function() {
+                    headerModelModal.style.display = 'none';
+                });
+            }
+            
+            // Fechar modal ao clicar fora
+            window.addEventListener('click', function(event) {
+                if (event.target === headerModelModal) {
+                    headerModelModal.style.display = 'none';
+                }
+            });
+            
+            // Função para mostrar notificação global
+            function showGlobalNotification(message, type = 'info') {
+                const notification = document.getElementById('globalNotification');
+                const content = notification.querySelector('.notification-content');
+                
+                content.className = `notification-content ${type}`;
+                content.querySelector('p').textContent = message;
+                
+                notification.style.display = 'block';
+                
+                // Auto close
+                setTimeout(() => {
+                    notification.style.display = 'none';
+                }, 5000);
+                
+                // Close button
+                content.querySelector('.close-notification').onclick = () => {
+                    notification.style.display = 'none';
+                };
+            }
+            
+            // Carregar modelo atual na inicialização
+            loadHeaderCurrentModel();
+        });
+    </script>
+    
+    <!-- Estilos adicionais para o loader global -->
+    <style>
+        .global-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 15, 35, 0.9);
+            backdrop-filter: var(--glass-backdrop);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .loader-content {
+            text-align: center;
+            color: var(--white);
+        }
+        
+        .loader-content .spinner {
+            margin-bottom: 1rem;
+        }
+        
+        .model-type-section {
+            border-bottom: 1px solid var(--glass-border);
+            padding-bottom: 1rem;
+        }
+        
+        .model-type-section:last-child {
+            border-bottom: none;
+        }
+        
+        .select-header-model-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+    </style>
 </body>
 </html>

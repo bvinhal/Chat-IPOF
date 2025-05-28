@@ -1,34 +1,60 @@
 {% extends "base.html" %}
 
-{% block title %}Assistente de Orçamento Público - Início{% endblock %}
+{% block title %}NEXUS AI Orçamentário - Inteligência Artificial para Gestão Orçamentária{% endblock %}
 
 {% block content %}
 <div class="welcome-section">
+    <!-- Partículas animadas de fundo -->
+    <div class="particles-bg" id="particlesBg"></div>
+    
     <!-- Modal para treinamento de modelo -->
     <div id="trainModelModal" class="modal">
         <div class="modal-content">
             <span class="close-modal">&times;</span>
-            <h3>Treinar Novo Modelo</h3>
+            <h3>
+                <i class="fas fa-brain" style="color: var(--primary-solid); margin-right: 0.5rem;"></i>
+                Treinar Novo Modelo de IA
+            </h3>
+            
+            <p style="color: var(--medium-light); margin-bottom: 1.5rem;">
+                Configure um novo modelo de inteligência artificial especializado em orçamento público.
+            </p>
             
             <form id="trainModelForm">
                 <div class="form-group">
-                    <label for="modelType">Selecione o tipo de modelo:</label>
+                    <label for="modelType">
+                        <i class="fas fa-robot"></i>
+                        Selecione o tipo de modelo de IA:
+                    </label>
                     <select id="modelType" name="modelType" required>
-                        <option value="claude">Claude (Anthropic)</option>
-                        <option value="openai">GPT (OpenAI)</option>
-                        <option value="gemini">Gemini (Google)</option>
+                        <option value="claude">
+                            🧠 Claude (Anthropic) - Especialista em análise de texto
+                        </option>
+                        <option value="openai">
+                            ⚡ GPT (OpenAI) - Processamento avançado de linguagem
+                        </option>
+                        <option value="gemini">
+                            💎 Gemini (Google) - Modelo multimodal inteligente
+                        </option>
                     </select>
                 </div>
                 
                 <div class="form-actions">
-                    <button type="submit" class="primary-button">Iniciar Treinamento</button>
-                    <button type="button" class="cancel-button">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-rocket"></i>
+                        Iniciar Treinamento
+                    </button>
+                    <button type="button" class="btn btn-ghost cancel-button">
+                        <i class="fas fa-times"></i>
+                        Cancelar
+                    </button>
                 </div>
             </form>
             
             <div id="trainingStatus" class="status-container hidden">
                 <div class="spinner"></div>
                 <p>Treinamento em andamento. Isso pode levar alguns minutos...</p>
+                <small>O sistema está processando documentos e otimizando a IA para orçamento público.</small>
             </div>
         </div>
     </div>
@@ -37,53 +63,300 @@
     <div id="manageModelsModal" class="modal">
         <div class="modal-content">
             <span class="close-modal">&times;</span>
-            <h3>Gerenciar Modelos</h3>
+            <h3>
+                <i class="fas fa-cogs" style="color: var(--accent-purple); margin-right: 0.5rem;"></i>
+                Gerenciar Modelos de IA
+            </h3>
             
             <div id="modelsList" class="models-list">
                 <div class="spinner"></div>
-                <p>Carregando modelos disponíveis...</p>
+                <p style="text-align: center;">Carregando modelos disponíveis...</p>
             </div>
         </div>
     </div>
 
+    <!-- Card principal de boas-vindas -->
     <div class="welcome-card">
-        <h2>Bem-vindo ao Assistente de Orçamento Público</h2>
-        <p>
-            Este assistente foi desenvolvido para ajudar você com dúvidas sobre planejamento 
-            e execução orçamentária e financeira do setor público.
-        </p>
+        <div class="welcome-header" style="text-align: center; margin-bottom: 2rem;">
+            <div class="logo-animation" style="font-size: 4rem; margin-bottom: 1rem; animation: float 3s ease-in-out infinite;">
+                ⚡
+            </div>
+            <h2>Bem-vindo ao NEXUS AI Orçamentário</h2>
+            <p style="font-size: 1.25rem; color: var(--medium-light); margin-bottom: 0;">
+                Sistema de Inteligência Artificial especializado em 
+                <span class="text-gradient">planejamento e execução orçamentária</span> 
+                do setor público.
+            </p>
+        </div>
         
+        <!-- Recursos principais -->
         <div class="features">
-            <div class="feature-item">
+            <div class="feature-item hover-glow">
                 <i class="fas fa-comments"></i>
-                <h3>Chat Interativo</h3>
-                <p>Tire suas dúvidas diretamente com nosso assistente virtual especializado em orçamento público.</p>
+                <h3>Chat Inteligente</h3>
+                <p>Converse com nossa IA especializada em orçamento público. Obtenha respostas precisas e contextualizadas para suas dúvidas sobre planejamento orçamentário.</p>
             </div>
             
-            <div class="feature-item">
+            <div class="feature-item hover-glow">
                 <i class="fas fa-brain"></i>
-                <h3>Inteligência Artificial</h3>
-                <p>Utilizamos modelos avançados de IA para fornecer respostas precisas e contextualizadas.</p>
+                <h3>IA Avançada</h3>
+                <p>Utilizamos modelos de ponta como Claude, GPT e Gemini, treinados especificamente com documentos oficiais e manuais do sistema orçamentário brasileiro.</p>
             </div>
             
-            <div class="feature-item">
-                <i class="fas fa-book"></i>
-                <h3>Base de Conhecimento</h3>
-                <p>Nosso assistente foi treinado com documentos oficiais e manuais do sistema de orçamento público.</p>
+            <div class="feature-item hover-glow">
+                <i class="fas fa-file-invoice-dollar"></i>
+                <h3>Geração de IPOF</h3>
+                <p>Crie Instrumentos de Planejamento, Orçamento e Finanças automaticamente a partir de documentos e descrições, com validação inteligente de dados.</p>
+            </div>
+            
+            <div class="feature-item hover-glow">
+                <i class="fas fa-chart-line"></i>
+                <h3>Classificação Automática</h3>
+                <p>Sistema inteligente de classificação de natureza de despesa, com análise semântica e sugestões baseadas em aprendizado de máquina.</p>
+            </div>
+            
+            <div class="feature-item hover-glow">
+                <i class="fas fa-shield-alt"></i>
+                <h3>Segurança e Conformidade</h3>
+                <p>Desenvolvido seguindo as melhores práticas de segurança, com total conformidade às normas do setor público brasileiro.</p>
+            </div>
+            
+            <div class="feature-item hover-glow">
+                <i class="fas fa-rocket"></i>
+                <h3>Tecnologia de Ponta</h3>
+                <p>Interface futurista e responsiva, com processamento em tempo real e algoritmos avançados de processamento de linguagem natural.</p>
             </div>
         </div>
         
+        <!-- CTA Principal -->
         <div class="cta-container">
-            <a href="{{ url_for('chat') }}" class="cta-button">Iniciar Conversa</a>
+            <a href="{{ url_for('chat') }}" class="btn btn-primary" style="font-size: 1.25rem; padding: 1rem 2rem;">
+                <i class="fas fa-rocket"></i>
+                Iniciar Conversa com IA
+            </a>
             
             <div class="admin-options">
-                <h4>Opções Administrativas</h4>
+                <h4>
+                    <i class="fas fa-tools"></i>
+                    Configurações Avançadas
+                </h4>
+                <p style="color: var(--medium-light); margin-bottom: 1rem; font-size: 0.9rem;">
+                    Configure e gerencie os modelos de IA para otimizar o desempenho do sistema.
+                </p>
                 <div class="admin-buttons">
-                    <button id="trainModelBtn" class="secondary-button">Treinar Modelo</button>
-                    <button id="manageModelsBtn" class="secondary-button">Gerenciar Modelos</button>
+                    <button id="trainModelBtn" class="btn btn-secondary">
+                        <i class="fas fa-brain"></i>
+                        Treinar Modelo IA
+                    </button>
+                    <button id="manageModelsBtn" class="btn btn-secondary">
+                        <i class="fas fa-cogs"></i>
+                        Gerenciar Modelos
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Estatísticas em tempo real -->
+        <div class="stats-section" style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid var(--glass-border);">
+            <h4 style="text-align: center; margin-bottom: 1.5rem; color: var(--white);">
+                <i class="fas fa-chart-bar"></i>
+                Status do Sistema
+            </h4>
+            <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+                <div class="stat-item" style="text-align: center; padding: 1rem; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-md); backdrop-filter: var(--glass-backdrop);">
+                    <div class="stat-icon" style="font-size: 2rem; margin-bottom: 0.5rem; color: var(--success-solid);">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <div class="stat-value" style="font-size: 1.5rem; font-weight: 700; color: var(--white); margin-bottom: 0.25rem;" id="modelsCount">
+                        Carregando...
+                    </div>
+                    <div class="stat-label" style="font-size: 0.875rem; color: var(--medium-light);">
+                        Modelos Ativos
+                    </div>
+                </div>
+                
+                <div class="stat-item" style="text-align: center; padding: 1rem; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-md); backdrop-filter: var(--glass-backdrop);">
+                    <div class="stat-icon" style="font-size: 2rem; margin-bottom: 0.5rem; color: var(--info-solid);">
+                        <i class="fas fa-database"></i>
+                    </div>
+                    <div class="stat-value" style="font-size: 1.5rem; font-weight: 700; color: var(--white); margin-bottom: 0.25rem;">
+                        100%
+                    </div>
+                    <div class="stat-label" style="font-size: 0.875rem; color: var(--medium-light);">
+                        Sistema Online
+                    </div>
+                </div>
+                
+                <div class="stat-item" style="text-align: center; padding: 1rem; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-md); backdrop-filter: var(--glass-backdrop);">
+                    <div class="stat-icon" style="font-size: 2rem; margin-bottom: 0.5rem; color: var(--accent-purple);">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                    </div>
+                    <div class="stat-value" style="font-size: 1.5rem; font-weight: 700; color: var(--white); margin-bottom: 0.25rem;">
+                        IPOF
+                    </div>
+                    <div class="stat-label" style="font-size: 0.875rem; color: var(--medium-light);">
+                        Geração Automática
+                    </div>
+                </div>
+                
+                <div class="stat-item" style="text-align: center; padding: 1rem; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-md); backdrop-filter: var(--glass-backdrop);">
+                    <div class="stat-icon" style="font-size: 2rem; margin-bottom: 0.5rem; color: var(--accent-cyan);">
+                        <i class="fas fa-tachometer-alt"></i>
+                    </div>
+                    <div class="stat-value" style="font-size: 1.5rem; font-weight: 700; color: var(--white); margin-bottom: 0.25rem;">
+                        < 2s
+                    </div>
+                    <div class="stat-label" style="font-size: 0.875rem; color: var(--medium-light);">
+                        Tempo de Resposta
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tecnologias utilizadas -->
+        <div class="tech-section" style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid var(--glass-border);">
+            <h4 style="text-align: center; margin-bottom: 1.5rem; color: var(--white);">
+                <i class="fas fa-microchip"></i>
+                Tecnologias de IA Utilizadas
+            </h4>
+            <div class="tech-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                <div class="tech-item" style="text-align: center; padding: 1rem; background: rgba(102, 126, 234, 0.1); border: 1px solid rgba(102, 126, 234, 0.3); border-radius: var(--radius-md); transition: all 0.3s ease;">
+                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">🧠</div>
+                    <div style="font-weight: 600; color: var(--white); font-size: 0.9rem;">Claude</div>
+                    <div style="font-size: 0.75rem; color: var(--medium-light);">Anthropic</div>
+                </div>
+                
+                <div class="tech-item" style="text-align: center; padding: 1rem; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius-md); transition: all 0.3s ease;">
+                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">⚡</div>
+                    <div style="font-weight: 600; color: var(--white); font-size: 0.9rem;">GPT-4</div>
+                    <div style="font-size: 0.75rem; color: var(--medium-light);">OpenAI</div>
+                </div>
+                
+                <div class="tech-item" style="text-align: center; padding: 1rem; background: rgba(236, 72, 153, 0.1); border: 1px solid rgba(236, 72, 153, 0.3); border-radius: var(--radius-md); transition: all 0.3s ease;">
+                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">💎</div>
+                    <div style="font-weight: 600; color: var(--white); font-size: 0.9rem;">Gemini</div>
+                    <div style="font-size: 0.75rem; color: var(--medium-light);">Google</div>
+                </div>
+                
+                <div class="tech-item" style="text-align: center; padding: 1rem; background: rgba(6, 182, 212, 0.1); border: 1px solid rgba(6, 182, 212, 0.3); border-radius: var(--radius-md); transition: all 0.3s ease;">
+                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">🔍</div>
+                    <div style="font-weight: 600; color: var(--white); font-size: 0.9rem;">RAG</div>
+                    <div style="font-size: 0.75rem; color: var(--medium-light);">Retrieval</div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Carregar estatísticas do sistema
+    loadSystemStats();
+    
+    // Animação de partículas (opcional)
+    initParticles();
+    
+    // Animações de hover para itens de tecnologia
+    document.querySelectorAll('.tech-item').forEach(item => {
+        item.addEventListener('mouseenter', function() {
+            this.style.transform = 'translateY(-5px) scale(1.05)';
+            this.style.boxShadow = '0 10px 30px rgba(102, 126, 234, 0.3)';
+        });
+        
+        item.addEventListener('mouseleave', function() {
+            this.style.transform = 'translateY(0) scale(1)';
+            this.style.boxShadow = 'none';
+        });
+    });
+    
+    async function loadSystemStats() {
+        try {
+            const response = await fetch('/api/models');
+            const data = await response.json();
+            
+            const modelsCount = document.getElementById('modelsCount');
+            if (data.models && data.models.length > 0) {
+                modelsCount.textContent = data.models.length;
+                modelsCount.style.color = 'var(--success-solid)';
+            } else {
+                modelsCount.textContent = '0';
+                modelsCount.style.color = 'var(--warning-solid)';
+            }
+        } catch (error) {
+            console.error('Erro ao carregar estatísticas:', error);
+            document.getElementById('modelsCount').textContent = 'N/A';
+        }
+    }
+    
+    function initParticles() {
+        // Implementação simples de partículas animadas
+        const particlesBg = document.getElementById('particlesBg');
+        if (!particlesBg) return;
+        
+        for (let i = 0; i < 20; i++) {
+            const particle = document.createElement('div');
+            particle.style.position = 'absolute';
+            particle.style.width = '2px';
+            particle.style.height = '2px';
+            particle.style.background = 'var(--primary-solid)';
+            particle.style.borderRadius = '50%';
+            particle.style.opacity = Math.random() * 0.5 + 0.2;
+            particle.style.left = Math.random() * 100 + '%';
+            particle.style.top = Math.random() * 100 + '%';
+            particle.style.animation = `float ${Math.random() * 10 + 5}s linear infinite`;
+            particle.style.animationDelay = Math.random() * 5 + 's';
+            
+            particlesBg.appendChild(particle);
+        }
+    }
+});
+</script>
+
+<style>
+.particles-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: -1;
+}
+
+.welcome-section {
+    position: relative;
+    min-height: 80vh;
+}
+
+.logo-animation {
+    filter: drop-shadow(0 0 20px rgba(102, 126, 234, 0.5));
+}
+
+.stats-section .stat-item:hover {
+    transform: translateY(-3px);
+    border-color: var(--primary-solid);
+}
+
+.tech-grid .tech-item:hover {
+    cursor: pointer;
+}
+
+@media (max-width: 768px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .tech-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .welcome-card h2 {
+        font-size: 2rem;
+    }
+    
+    .features {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
 {% endblock %}

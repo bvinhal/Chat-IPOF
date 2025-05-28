@@ -23,8 +23,6 @@ from langchain.schema import HumanMessage, AIMessage
 from models.ai_model import AIModel
 from config import active_config
 
-#Inclusão do LLM interno da SEFAZ
-from utils.custom_llms.custom_llms import CustomGeminiLLM
 
 
 class GeminiModel(AIModel):
@@ -53,21 +51,18 @@ class GeminiModel(AIModel):
         Returns:
             bool: True se a inicialização foi bem-sucedida, False caso contrário
         """
-        # if not self.validate_api_key():
-        #     self.logger.error("API key do Google Gemini não configurada")
-        #     return False
+        if not self.validate_api_key():
+            self.logger.error("API key do Google Gemini não configurada")
+            return False
         
         try:
             # Inicializa o modelo de linguagem Gemini
-            # self.llm = ChatGoogleGenerativeAI(
-            #     model=self.model_name,
-            #     google_api_key=self.api_key,
-            #     temperature=0.2,
-            #     max_output_tokens=4096
-            # )
-            
-            #Inclusão do LLM interno da SEFAZ
-            self.llm = CustomGeminiLLM(model=self.model_name)
+            self.llm = ChatGoogleGenerativeAI(
+                model=self.model_name,
+                google_api_key=self.api_key,
+                temperature=0.2,
+                max_output_tokens=4096
+            )
             
             self.logger.info(f"Modelo Gemini '{self.model_name}' inicializado com sucesso")
             return True
