@@ -245,8 +245,7 @@ class OpenAIModel(AIModel):
                     summarize_prompt = f"""
                     IMPORTANTE: Resuma a seguinte consulta em NO MÁXIMO {target_length} caracteres.
                     Priorize os pontos principais, palavras-chave e parâmetros essenciais.
-                    Mantenha apenas as informações absolutamente cruciais. 
-                    Tente encontrar as informações de valor total, quantidade de meses e data de inicio. 
+                    Mantenha apenas as informações absolutamente cruciais.
                     
                     CONSULTA ORIGINAL:
                     {query}
@@ -782,3 +781,52 @@ class OpenAIModel(AIModel):
             self.logger.error(f"Erro ao analisar opções de natureza completa: {str(e)}")
             # Em caso de erro, retorna as opções originais
             return natureza_options
+
+    def resume_texto(self, texto: str) -> str:
+        """
+        Resumir texto usando o modelo OpenAI e extrair informações relevantes.
+        
+        Args:
+            texto: Texto a ser resumido
+                
+        Returns:
+            Dict[str, Any]: Resumo e informações extraídas (valor, meses, datas)
+        """
+        try:
+            # Inicializa o cliente OpenAI
+            from openai import OpenAI
+            client = OpenAI(api_key=self.api_key)
+            
+            # Cria um prompt para resumir o texto que seja fiel ao conteúdo original
+            prompt = (
+                f"Resuma este texto destacando o objeto principal da contratação e outras informações relevantes. "
+                f"IMPORTANTE: Não infira, crie ou adicione informações que não estejam presentes no texto original. "
+                f"Especialmente, não mencione valores monetários ou períodos de tempo a menos que estejam explicitamente "
+                f"mencionados no texto. O resumo deve ser factual e baseado apenas no que está explicitamente contido "
+                f"no texto original. Identifique se possível o valor total da despesa, a quantidade de meses e a data  "
+                f"de início e término. Se encontradas, estas informações devem constar no resumo. \n\n"
+                f"Texto original:\n{texto}"
+            )
+            
+            # Chama a API para resumir o texto
+            response = client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": "Você é um especialista em resumir documentos de contratação pública de forma precisa e factual, sem adicionar informações que não estejam presentes no texto original."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=1000,
+                temperature=0.3  # Temperatura baixa para manter o resumo mais factual
+            )
+            
+            # Extrai o resumo da resposta
+            resumo = response.choices[0].message.content.strip()
+            
+            return resumo
+                
+        except Exception as e:
+            self.logger.error(f"Erro ao resumir texto com {self.model_name}: {str(e)}")
+            # Em caso de erro, retorna um resumo simplificado mas garante que o fluxo continua
+            resumo_simples = texto[:500] + "..." if len(texto) > 500 else texto
+            
+            return resumo_simples

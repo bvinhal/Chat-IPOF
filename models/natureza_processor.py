@@ -95,7 +95,7 @@ class NaturezaProcessor:
             df = df.rename(columns={
                 'Natureza Despesa (Codigo)': 'codigo',
                 'Natureza Despesa (Nome)': 'nome',
-                'Descrição Despesa': 'descricao',
+                'Descrição Despesa': 'orientacao',
                 'Orientação Natureza': 'orientacao'
             })
             

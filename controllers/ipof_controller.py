@@ -107,12 +107,12 @@ class IPOFController:
         
         # Retorna mensagem solicitando a descrição
         return (
-            "Vamos lá começar a criar um novo IPOF? \n\n"
-            "Me diga qual é a descrição da despesa ou, se preferir, envie um documento "
-            "(Termo de Referência, ETP, Contrato, DOD ou outro) que traga essa informação.\n\n"
-            "Pode mandar nos formatos DOC, DOCX ou PDF, tá bom?\n\n"
-            "Ah, e se quiser parar tudo, é só digitar 'cancelar'. \n"
-            "Se quiser recomeçar do zero, digite 'reiniciar'."
+            "Vamos iniciar a criação de um novo IPOF.\n\n"
+            "Por favor, informe a descrição da despesa ou anexe um documento "
+            "(Termo de Referência, ETP, Contrato ou outro) que contenha a descrição.\n\n"
+            "O documento pode ser nos formatos DOC, DOCX ou PDF.\n\n"
+            "A qualquer momento, você pode digitar 'cancelar' para interromper a criação do IPOF "
+            "ou 'reiniciar' para começar novamente."
         )
     
     def processar_mensagem(self, mensagem: str, ai_model=None) -> str:
@@ -202,41 +202,29 @@ class IPOFController:
         Returns:
             Dict[str, Any]: Resumo e informações extraídas (valor, meses, datas)
         """
+        
+
+        if ai_model is None:
+            self.logger.error("Modelo de IA não fornecido para resumir texto")
+            # Fallback para um resumo simplificado em caso de erro
+            resumo_simples = texto[:500] + "..." if len(texto) > 500 else texto
+            
+            return {
+                'resumo': f"Resumo: {resumo_simples}\n\nValor total da despesa: Não encontrado no texto\n\nQuantidade de meses previstos: Não encontrado no texto\n\nData de início: Não encontrada no texto",
+                'valor_identificado': None,
+                'meses_identificados': None,
+                'data_inicio': None,
+                'data_termino': None
+            }
+        
         try:
-            # Inicializa o cliente OpenAI
-            client = OpenAI(api_key=active_config.OPENAI_API_KEY)
-            
-            
-            # Cria um prompt para resumir o texto que seja fiel ao conteúdo original
-            prompt = (
-                f"Resuma este texto destacando o objeto principal da contratação e outras informações relevantes. "
-                f"IMPORTANTE: Não infira, crie ou adicione informações que não estejam presentes no texto original. "
-                f"Especialmente, não mencione valores monetários ou períodos de tempo a menos que estejam explicitamente "
-                f"mencionados no texto. O resumo deve ser factual e baseado apenas no que está explicitamente contido "
-                f"no texto original. Identifique se possível o valor total da despesa, a quantidade de meses e a data  "
-                f"de início e término. Se encontradas, estas informações devem constar no resumo. \n\n"
-                f"Texto original:\n{texto}"
-            )
-            
-            # Chama a API da OpenAI para resumir o texto
-            response = client.chat.completions.create(
-                model="gpt-4o",#"gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "Você é um especialista em resumir documentos de contratação pública de forma precisa e factual, sem adicionar informações que não estejam presentes no texto original."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=1000,
-                temperature=0.3  # Temperatura baixa para manter o resumo mais factual
-            )
-            
-            # Extrai o resumo da resposta
-            resumo = response.choices[0].message.content.strip()
-            
+            # Usa o método resume_texto do modelo fornecido
+            resumo = ai_model.resume_texto(texto)
+                       
             # Formata o resumo para incluir informações sobre valor e meses apenas se foram realmente encontrados
             resumo_formatado = resumo
 
             # Extrai valores usando funções especializadas
-            val = f'valor total 7.667.175,12 {texto}'
             valor_identificado = extract_valor_monetario(resumo)
             meses_identificados = extract_meses(resumo)
             data_inicio = extract_data_inicio(resumo)
@@ -282,10 +270,9 @@ class IPOFController:
                 'data_inicio': data_inicio,
                 'data_termino': data_termino
             }
-                
         except Exception as e:
-            self.logger.error(f"Erro ao resumir texto com GPT-3.5 Turbo: {str(e)}")
-            # Em caso de erro, retorna um resumo simplificado mas garante que o fluxo continua
+            self.logger.error(f"Erro ao resumir texto com o modelo: {str(e)}")
+            # Fallback para um resumo simplificado em caso de erro
             resumo_simples = texto[:500] + "..." if len(texto) > 500 else texto
             
             return {
@@ -295,7 +282,7 @@ class IPOFController:
                 'data_inicio': None,
                 'data_termino': None
             }
-                
+
     def _processar_descricao(self, conteudo: str, ai_model=None, fonte: str = "mensagem") -> str:
         """
         Processa a descrição da despesa.
@@ -338,7 +325,7 @@ class IPOFController:
         sugestoes_natureza = []
         try:
             if self.classificador.is_trained:
-                predicoes = self.classificador.predict(conteudo, top_k=1)
+                predicoes = self.classificador.predict(resumo, top_k=1)
                 if predicoes:
                     sugestao = predicoes[0]
                     sugestoes_natureza.append(sugestao)

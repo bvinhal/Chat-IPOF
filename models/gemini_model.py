@@ -23,6 +23,9 @@ from langchain.schema import HumanMessage, AIMessage
 from models.ai_model import AIModel
 from config import active_config
 
+#Inclusão do LLM interno da SEFAZ
+from utils.custom_llms.custom_llms import CustomGeminiLLM
+
 
 class GeminiModel(AIModel):
     """
@@ -50,18 +53,21 @@ class GeminiModel(AIModel):
         Returns:
             bool: True se a inicialização foi bem-sucedida, False caso contrário
         """
-        if not self.validate_api_key():
-            self.logger.error("API key do Google Gemini não configurada")
-            return False
+        # if not self.validate_api_key():
+        #     self.logger.error("API key do Google Gemini não configurada")
+        #     return False
         
         try:
             # Inicializa o modelo de linguagem Gemini
-            self.llm = ChatGoogleGenerativeAI(
-                model=self.model_name,
-                google_api_key=self.api_key,
-                temperature=0.2,
-                max_output_tokens=4096
-            )
+            # self.llm = ChatGoogleGenerativeAI(
+            #     model=self.model_name,
+            #     google_api_key=self.api_key,
+            #     temperature=0.2,
+            #     max_output_tokens=4096
+            # )
+            
+            #Inclusão do LLM interno da SEFAZ
+            self.llm = CustomGeminiLLM(model=self.model_name)
             
             self.logger.info(f"Modelo Gemini '{self.model_name}' inicializado com sucesso")
             return True
@@ -765,3 +771,55 @@ class GeminiModel(AIModel):
             
             # Em caso de erro, retorna as opções originais
             return natureza_options
+
+    def resume_texto(self, texto: str) -> str:
+        """
+        Resumir texto usando o modelo Gemini e extrair informações relevantes.
+        
+        Args:
+            texto: Texto a ser resumido
+                
+        Returns:
+            Dict[str, Any]: Resumo e informações extraídas (valor, meses, datas)
+        """
+        try:
+            # Inicializa o cliente Gemini
+            import google.generativeai as genai
+            
+            # Configura o cliente
+            genai.configure(api_key=self.api_key)
+            
+            # Cria o prompt para resumir o texto
+            prompt = (
+                f"Resuma este texto destacando o objeto principal da contratação e outras informações relevantes. "
+                f"IMPORTANTE: Não infira, crie ou adicione informações que não estejam presentes no texto original. "
+                f"Especialmente, não mencione valores monetários ou períodos de tempo a menos que estejam explicitamente "
+                f"mencionados no texto. O resumo deve ser factual e baseado apenas no que está explicitamente contido "
+                f"no texto original. Identifique se possível o valor total da despesa, a quantidade de meses e a data  "
+                f"de início e término. Se encontradas, estas informações devem constar no resumo. O resumo deve ter "
+                f"no máximo 500 caracteres.\n\n"
+                f"Texto original:\n{texto}"
+            )
+            
+            # Cria o modelo e gera a resposta
+            model = genai.GenerativeModel(self.model_name)
+            
+            response = model.generate_content(
+                [prompt],
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.3,  # Temperatura baixa para manter o resumo mais factual
+                    max_output_tokens=1000
+                )
+            )
+            
+            # Extrai o resumo da resposta
+            resumo = response.text.strip()
+            
+            return resumo
+                
+        except Exception as e:
+            self.logger.error(f"Erro ao resumir texto com {self.model_name}: {str(e)}")
+            # Em caso de erro, retorna um resumo simplificado mas garante que o fluxo continua
+            resumo_simples = texto[:500] + "..." if len(texto) > 500 else texto
+            
+            return resumo_simples

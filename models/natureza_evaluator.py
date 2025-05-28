@@ -1126,3 +1126,15 @@ class NaturezaEvaluator(AIModel):
             List[Dict[str, Any]]: Lista das naturezas mais adequadas, ordenadas por relevância
         """
         pass
+
+    def resume_texto(self, texto: str) -> str:
+        """
+        Resumir texto usando o modelo de avaliação e extrair informações relevantes.
+        
+        Args:
+            texto: Texto a ser resumido
+                
+        Returns:
+            Dict[str, Any]: Resumo e informações extraídas (valor, meses, datas)
+        """
+        pass

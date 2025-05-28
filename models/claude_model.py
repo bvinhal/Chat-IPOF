@@ -839,3 +839,52 @@ class ClaudeModel(AIModel):
             
             # Em caso de erro, retorna as opções originais
             return natureza_options
+
+    def resume_texto(self, texto: str) -> str:
+        """
+        Resumir texto usando o modelo Claude e extrair informações relevantes.
+        
+        Args:
+            texto: Texto a ser resumido
+                
+        Returns:
+            Dict[str, Any]: Resumo e informações extraídas (valor, meses, datas)
+        """
+        try:
+            # Inicializa o cliente Anthropic
+            import anthropic
+            client = anthropic.Anthropic(api_key=self.api_key)
+            
+            # Cria um prompt para resumir o texto que seja fiel ao conteúdo original
+            prompt = (
+                f"Resuma este texto destacando o objeto principal da contratação e outras informações relevantes. "
+                f"IMPORTANTE: Não infira, crie ou adicione informações que não estejam presentes no texto original. "
+                f"Especialmente, não mencione valores monetários ou períodos de tempo a menos que estejam explicitamente "
+                f"mencionados no texto. O resumo deve ser factual e baseado apenas no que está explicitamente contido "
+                f"no texto original. Identifique se possível o valor total da despesa, a quantidade de meses e a data  "
+                f"de início e término. Se encontradas, estas informações devem constar no resumo. \n\n"
+                f"Texto original:\n{texto}"
+            )
+            
+            # Chama a API do Claude para resumir o texto
+            response = client.messages.create(
+                model=self.model_name,
+                max_tokens=1000,
+                temperature=0.3,  # Temperatura baixa para manter o resumo mais factual
+                system="Você é um especialista em resumir documentos de contratação pública de forma precisa e factual, sem adicionar informações que não estejam presentes no texto original.",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            
+            # Extrai o resumo da resposta
+            resumo = response.content[0].text.strip()
+            
+            return resumo
+                
+        except Exception as e:
+            self.logger.error(f"Erro ao resumir texto com {self.model_name}: {str(e)}")
+            # Em caso de erro, retorna um resumo simplificado mas garante que o fluxo continua
+            resumo_simples = texto[:500] + "..." if len(texto) > 500 else texto
+            
+            return resumo_simples

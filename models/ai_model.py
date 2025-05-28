@@ -228,3 +228,16 @@ class AIModel(ABC):
             bool: True se a API key está configurada, False caso contrário
         """
         return True  # Implementado nas classes derivadas
+
+    @abstractmethod
+    def resume_texto(self, texto: str) -> str:
+        """
+        Resumir texto usando o modelo e extrair informações relevantes.
+        
+        Args:
+            texto: Texto a ser resumido
+                
+        Returns:
+            Dict[str, Any]: Resumo e informações extraídas (valor, meses, datas)
+        """
+        pass
