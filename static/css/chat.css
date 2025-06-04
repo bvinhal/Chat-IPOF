@@ -323,7 +323,7 @@
 
 /* Entrada de mensagem futurista */
 .chat-input {
-    padding: var(--spacing-md);
+    padding: var(--spacing-xs);
     background: rgba(15, 15, 35, 0.8);
     border-top: 1px solid var(--glass-border);
     backdrop-filter: var(--glass-backdrop);
@@ -763,7 +763,7 @@
     }
     
     .chat-input {
-        padding: var(--spacing-sm);
+        padding: var(--spacing-xs);
     }
     
     #messageForm {
@@ -1226,7 +1226,7 @@
 
 /* Entrada de mensagem - design mais limpo */
 .chat-input {
-    padding: var(--spacing-md) var(--spacing-lg); /* Padding lateral maior */
+    padding: var(--spacing-xs) var(--spacing-xxl); /* Padding lateral maior */
     background: rgba(15, 15, 35, 0.9);
     border-top: 1px solid var(--glass-border);
     backdrop-filter: var(--glass-backdrop);
@@ -1434,7 +1434,7 @@
     }
     
     .chat-input {
-        padding: var(--spacing-sm);
+        padding: var(--spacing-xs);
     }
     
     .chat-messages {
@@ -1828,7 +1828,7 @@
 
 /* Entrada de mensagem */
 .chat-input {
-    padding: var(--spacing-md) var(--spacing-lg);
+    padding: var(--spacing-xs) var(--spacing-xxl);
     background: rgba(15, 15, 35, 0.9);
     border-top: 1px solid var(--glass-border);
     backdrop-filter: var(--glass-backdrop);
@@ -1969,7 +1969,7 @@
     }
     
     .chat-input {
-        padding: var(--spacing-sm);
+        padding: var(--spacing-xs);
     }
     
     .chat-messages {
