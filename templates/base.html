@@ -29,36 +29,40 @@
 </head>
 <body>
     <header class="app-header">
-        <div class="container">
-            <div class="header-content">
-                <div class="logo">
-                    <h1>NEXUS AI</h1>
-                    <span style="font-size: 0.75rem; color: var(--medium-light); font-weight: 500; margin-left: 0.5rem;">Orçamentário</span>
-                </div>
+        <div class="header-content">
+            <div class="logo">
+                <h1>NEXUS AI</h1>
+                <span class="logo-subtitle">Orçamentário</span>
+            </div>
+            
+            <nav class="main-nav">
+                <ul>
+                    <li><a href="{{ url_for('index') }}" {% if request.endpoint == 'index' %}class="active"{% endif %}>
+                        <i class="fas fa-home"></i> Início
+                    </a></li>
+                    <li><a href="{{ url_for('chat') }}" {% if request.endpoint == 'chat' %}class="active"{% endif %}>
+                        <i class="fas fa-comments"></i> Chat IA
+                    </a></li>
+                    <li><a href="{{ url_for('admin_panel') }}" {% if request.endpoint == 'admin_panel' %}class="active"{% endif %}>
+                        <i class="fas fa-cogs"></i> Admin
+                    </a></li>
+                </ul>
+            </nav>
+            
+            <!-- Seletor de modelo como combobox compacto -->
+            <div class="model-selector">
                 
-                <nav class="main-nav">
-                    <ul>
-                        <li><a href="{{ url_for('index') }}" {% if request.endpoint == 'index' %}class="active"{% endif %}>
-                            <i class="fas fa-home"></i> Início
-                        </a></li>
-                        <li><a href="{{ url_for('chat') }}" {% if request.endpoint == 'chat' %}class="active"{% endif %}>
-                            <i class="fas fa-comments"></i> Chat IA
-                        </a></li>
-                        <li><a href="{{ url_for('admin_panel') }}" {% if request.endpoint == 'admin_panel' %}class="active"{% endif %}>
-                            <i class="fas fa-cogs"></i> Admin
-                        </a></li>
-                    </ul>
-                </nav>
-                
-                <!-- Seletor de modelo integrado -->
-                <div class="model-selector" id="headerModelSelector">
-                    <span class="model-selector-label">Modelo IA</span>
-                    <div class="model-selector-current" id="headerCurrentModel">
-                        <div class="model-selector-icon">
-                            <i class="fas fa-robot"></i>
+                <div class="model-dropdown" id="headerModelDropdown">
+                    <button class="model-dropdown-button" id="headerModelDropdownButton">
+                        <div class="model-icon claude" id="headerCurrentModelIcon">
+                            <i class="fas fa-brain"></i>
                         </div>
-                        <span id="headerModelName">Carregando...</span>
-                        <i class="fas fa-chevron-down" style="font-size: 0.75rem; margin-left: 0.25rem;"></i>
+                        <span class="model-text" id="headerCurrentModelText">Carregando...</span>
+                        <i class="fas fa-chevron-down dropdown-arrow"></i>
+                    </button>
+                    
+                    <div class="model-dropdown-menu" id="headerModelDropdownMenu">
+                        <div class="spinner" style="width: 16px; height: 16px; margin: var(--spacing-sm) auto;"></div>
                     </div>
                 </div>
             </div>
@@ -76,29 +80,6 @@
             <p>&copy; 2024 NEXUS AI Orçamentário - Sistema de Inteligência Artificial para Gestão Orçamentária Inteligente</p>
         </div>
     </footer>
-
-    <!-- Modal para seleção de modelo no header -->
-    <div id="headerModelModal" class="modal">
-        <div class="modal-content">
-            <span class="close-modal" id="closeHeaderModelModal">&times;</span>
-            <h3 style="text-align: center; margin-bottom: 1.5rem;">
-                <i class="fas fa-robot" style="margin-right: 0.5rem; color: var(--primary-solid);"></i>
-                Selecionar Modelo de IA
-            </h3>
-            
-            <div id="headerAvailableModelsList" class="models-list">
-                <div class="spinner"></div>
-                <p style="text-align: center; color: var(--medium-light);">Carregando modelos disponíveis...</p>
-            </div>
-            
-            <div style="text-align: center; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--glass-border);">
-                <small style="color: var(--medium); font-size: 0.8rem;">
-                    <i class="fas fa-info-circle"></i>
-                    Os modelos são treinados especificamente para orçamento público
-                </small>
-            </div>
-        </div>
-    </div>
 
     <!-- Indicador de carregamento global -->
     <div id="globalLoader" class="global-loader hidden">
@@ -125,11 +106,24 @@
     <!-- Script para seletor de modelo no header -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const headerModelSelector = document.getElementById('headerCurrentModel');
-            const headerModelModal = document.getElementById('headerModelModal');
-            const closeHeaderModelModal = document.getElementById('closeHeaderModelModal');
-            const headerAvailableModelsList = document.getElementById('headerAvailableModelsList');
-            const headerModelName = document.getElementById('headerModelName');
+            const headerModelDropdown = document.getElementById('headerModelDropdown');
+            const headerModelDropdownButton = document.getElementById('headerModelDropdownButton');
+            const headerModelDropdownMenu = document.getElementById('headerModelDropdownMenu');
+            const headerCurrentModelText = document.getElementById('headerCurrentModelText');
+            const headerCurrentModelIcon = document.getElementById('headerCurrentModelIcon');
+            
+            let currentModel = null;
+            let availableModels = {};
+            
+            // Função para obter ícone do modelo
+            function getModelIcon(type) {
+                const icons = {
+                    claude: 'brain',
+                    openai: 'bolt',
+                    gemini: 'gem'
+                };
+                return icons[type] || 'robot';
+            }
             
             // Função para carregar o modelo atual no header
             async function loadHeaderCurrentModel() {
@@ -138,40 +132,28 @@
                     if (response.ok) {
                         const data = await response.json();
                         if (data && data.model) {
-                            const modelText = `${data.model.type.toUpperCase()}`;
-                            headerModelName.textContent = modelText;
+                            currentModel = data.model.type;
+                            const modelText = data.model.type.toUpperCase();
+                            headerCurrentModelText.textContent = modelText;
                             
                             // Atualizar ícone baseado no tipo de modelo
-                            const icon = headerModelSelector.querySelector('.model-selector-icon i');
-                            switch(data.model.type.toLowerCase()) {
-                                case 'claude':
-                                    icon.className = 'fas fa-brain';
-                                    break;
-                                case 'openai':
-                                    icon.className = 'fas fa-bolt';
-                                    break;
-                                case 'gemini':
-                                    icon.className = 'fas fa-gem';
-                                    break;
-                                default:
-                                    icon.className = 'fas fa-robot';
-                            }
+                            headerCurrentModelIcon.className = `model-icon ${data.model.type}`;
+                            headerCurrentModelIcon.innerHTML = `<i class="fas fa-${getModelIcon(data.model.type)}"></i>`;
                         } else {
-                            headerModelName.textContent = 'Nenhum modelo';
+                            headerCurrentModelText.textContent = 'Nenhum modelo';
+                            headerCurrentModelIcon.className = 'model-icon';
+                            headerCurrentModelIcon.innerHTML = '<i class="fas fa-robot"></i>';
                         }
                     }
                 } catch (error) {
                     console.error('Erro ao carregar modelo atual:', error);
-                    headerModelName.textContent = 'Erro';
+                    headerCurrentModelText.textContent = 'Erro';
                 }
             }
             
-            // Função para carregar modelos disponíveis no header
+            // Função para carregar modelos disponíveis (apenas o último de cada tipo)
             async function loadHeaderAvailableModels() {
-                headerAvailableModelsList.innerHTML = `
-                    <div class="spinner"></div>
-                    <p style="text-align: center; color: var(--medium-light);">Carregando modelos disponíveis...</p>
-                `;
+                headerModelDropdownMenu.innerHTML = '<div class="spinner" style="width: 16px; height: 16px; margin: var(--spacing-sm) auto;"></div>';
                 
                 try {
                     const response = await fetch('/api/models');
@@ -179,60 +161,62 @@
                         const data = await response.json();
                         
                         if (!data.models || data.models.length === 0) {
-                            headerAvailableModelsList.innerHTML = `
-                                <div class="status-container info">
-                                    <i class="fas fa-info-circle"></i>
-                                    <p>Nenhum modelo treinado disponível.</p>
-                                    <small>Configure e treine modelos no painel administrativo.</small>
+                            headerModelDropdownMenu.innerHTML = `
+                                <div class="no-models-message">
+                                    <i class="fas fa-info-circle"></i> Nenhum modelo treinado disponível
                                 </div>
                             `;
                             return;
                         }
                         
-                        // Organizar modelos por tipo
-                        const modelsByType = {};
+                        // Organizar modelos por tipo e pegar apenas o mais recente de cada
+                        const latestModels = {};
                         data.models.forEach(model => {
-                            if (!modelsByType[model.type]) {
-                                modelsByType[model.type] = [];
+                            if (!latestModels[model.type] || new Date(model.created) > new Date(latestModels[model.type].created)) {
+                                latestModels[model.type] = model;
                             }
-                            modelsByType[model.type].push(model);
                         });
                         
-                        let modelsHtml = '';
-                        for (const [type, models] of Object.entries(modelsByType)) {
-                            modelsHtml += `
-                                <div class="model-type-section" style="margin-bottom: 1.5rem;">
-                                    <h4 style="font-size: 0.9rem; color: var(--primary-light); margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;">
-                                        <i class="fas fa-${getModelIcon(type)}"></i> ${type.toUpperCase()}
-                                    </h4>
-                            `;
-                            
-                            models.forEach(model => {
-                                modelsHtml += `
-                                    <div class="model-item" style="margin-bottom: 0.75rem; cursor: pointer;" data-model-type="${model.type}">
-                                        <div class="model-info">
-                                            <div class="model-name">${model.name}</div>
-                                            <div class="model-meta">Criado: ${model.created}</div>
-                                        </div>
-                                        <div class="model-actions">
-                                            <button class="btn btn-primary small-button select-header-model-btn" data-model-type="${model.type}">
-                                                <i class="fas fa-check"></i> Selecionar
-                                            </button>
+                        availableModels = latestModels;
+                        
+                        let html = '';
+                        const modelTypes = ['claude', 'openai', 'gemini'];
+                        
+                        modelTypes.forEach(type => {
+                            if (latestModels[type]) {
+                                const model = latestModels[type];
+                                const isActive = currentModel === type;
+                                
+                                html += `
+                                    <div class="dropdown-section">
+                                        <div class="dropdown-section-title">${type.toUpperCase()}</div>
+                                        <div class="dropdown-item ${isActive ? 'active' : ''}" data-model-type="${type}">
+                                            <div class="model-icon ${type}">
+                                                <i class="fas fa-${getModelIcon(type)}"></i>
+                                            </div>
+                                            <div class="dropdown-item-text">
+                                                <div>${model.name}</div>
+                                                <div class="dropdown-item-meta">Criado: ${model.created}</div>
+                                            </div>
                                         </div>
                                     </div>
                                 `;
-                            });
-                            
-                            modelsHtml += '</div>';
+                            }
+                        });
+                        
+                        if (html === '') {
+                            html = '<div class="no-models-message">Nenhum modelo disponível</div>';
                         }
                         
-                        headerAvailableModelsList.innerHTML = modelsHtml;
+                        headerModelDropdownMenu.innerHTML = html;
                         
                         // Adicionar event listeners
-                        document.querySelectorAll('.select-header-model-btn').forEach(btn => {
-                            btn.addEventListener('click', function() {
-                                const modelType = this.getAttribute('data-model-type');
-                                changeHeaderModel(modelType);
+                        headerModelDropdownMenu.querySelectorAll('.dropdown-item').forEach(item => {
+                            item.addEventListener('click', function() {
+                                const modelType = this.dataset.modelType;
+                                if (modelType && modelType !== currentModel) {
+                                    changeHeaderModel(modelType);
+                                }
                             });
                         });
                         
@@ -241,33 +225,23 @@
                     }
                 } catch (error) {
                     console.error('Erro ao carregar modelos:', error);
-                    headerAvailableModelsList.innerHTML = `
-                        <div class="status-container error">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <p>Erro ao carregar modelos: ${error.message}</p>
+                    headerModelDropdownMenu.innerHTML = `
+                        <div class="no-models-message">
+                            <i class="fas fa-exclamation-triangle"></i> Erro ao carregar modelos
                         </div>
                     `;
-                }
-            }
-            
-            // Função para obter ícone do modelo
-            function getModelIcon(type) {
-                switch(type.toLowerCase()) {
-                    case 'claude': return 'brain';
-                    case 'openai': return 'bolt';
-                    case 'gemini': return 'gem';
-                    default: return 'robot';
                 }
             }
             
             // Função para alterar modelo
             async function changeHeaderModel(modelType) {
                 try {
-                    // Mostrar loader
-                    const btn = document.querySelector(`[data-model-type="${modelType}"]`);
-                    const originalText = btn.innerHTML;
-                    btn.innerHTML = '<i class="spinner" style="width: 12px; height: 12px;"></i> Alterando...';
-                    btn.disabled = true;
+                    // Mostrar loader no item
+                    const item = headerModelDropdownMenu.querySelector(`[data-model-type="${modelType}"]`);
+                    if (item) {
+                        const originalContent = item.innerHTML;
+                        item.innerHTML = '<div class="spinner" style="width: 12px; height: 12px; margin: 4px auto;"></div>';
+                    }
                     
                     const response = await fetch('/api/change-model', {
                         method: 'POST',
@@ -281,8 +255,8 @@
                     
                     if (response.ok) {
                         showGlobalNotification(data.message, 'success');
-                        loadHeaderCurrentModel();
-                        headerModelModal.style.display = 'none';
+                        await loadHeaderCurrentModel();
+                        closeHeaderDropdown();
                         
                         // Recarregar a página se estivermos no chat para atualizar o contexto
                         if (window.location.pathname.includes('/chat')) {
@@ -292,33 +266,53 @@
                         }
                     } else {
                         showGlobalNotification(data.message, 'error');
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
+                        // Restaurar conteúdo original do item
+                        if (item) {
+                            await loadHeaderAvailableModels();
+                        }
                     }
                 } catch (error) {
                     console.error('Erro ao alterar modelo:', error);
                     showGlobalNotification(`Erro ao alterar modelo: ${error.message}`, 'error');
+                    await loadHeaderAvailableModels();
                 }
             }
             
+            // Função para abrir dropdown
+            function openHeaderDropdown() {
+                headerModelDropdown.classList.add('open');
+                loadHeaderAvailableModels();
+            }
+            
+            // Função para fechar dropdown
+            function closeHeaderDropdown() {
+                headerModelDropdown.classList.remove('open');
+            }
+            
             // Event listeners
-            if (headerModelSelector) {
-                headerModelSelector.addEventListener('click', function() {
-                    loadHeaderAvailableModels();
-                    headerModelModal.style.display = 'block';
+            if (headerModelDropdownButton) {
+                headerModelDropdownButton.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    
+                    if (headerModelDropdown.classList.contains('open')) {
+                        closeHeaderDropdown();
+                    } else {
+                        openHeaderDropdown();
+                    }
                 });
             }
             
-            if (closeHeaderModelModal) {
-                closeHeaderModelModal.addEventListener('click', function() {
-                    headerModelModal.style.display = 'none';
-                });
-            }
+            // Fechar dropdown ao clicar fora
+            document.addEventListener('click', function(e) {
+                if (!headerModelDropdown.contains(e.target)) {
+                    closeHeaderDropdown();
+                }
+            });
             
-            // Fechar modal ao clicar fora
-            window.addEventListener('click', function(event) {
-                if (event.target === headerModelModal) {
-                    headerModelModal.style.display = 'none';
+            // Fechar dropdown com ESC
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    closeHeaderDropdown();
                 }
             });
             
@@ -348,7 +342,7 @@
         });
     </script>
     
-    <!-- Estilos adicionais para o loader global -->
+    <!-- Estilos adicionais para o loader global e notificações -->
     <style>
         .global-loader {
             position: fixed;
@@ -373,18 +367,435 @@
             margin-bottom: 1rem;
         }
         
-        .model-type-section {
-            border-bottom: 1px solid var(--glass-border);
-            padding-bottom: 1rem;
+        /* Notificações futuristas */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 3000;
+            max-width: 400px;
+            display: none;
+            animation: notificationSlide 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes notificationSlide {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification-content {
+            padding: var(--spacing-md);
+            border-radius: var(--radius-md);
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: var(--glass-backdrop);
+            box-shadow: var(--shadow-xl);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: var(--white);
+        }
+
+        .notification-content.success {
+            border-color: var(--success-solid);
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        .notification-content.error {
+            border-color: var(--error-solid);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .notification-content.info {
+            border-color: var(--info-solid);
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .notification-content.warning {
+            border-color: var(--warning-solid);
+            background: rgba(245, 158, 11, 0.1);
+        }
+
+        .notification-content p {
+            margin: 0;
+            flex: 1;
+        }
+
+        .close-notification {
+            background: none;
+            border: none;
+            color: var(--medium-light);
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 0 0 0 var(--spacing-sm);
+            transition: color 0.3s ease;
+        }
+
+        .close-notification:hover {
+            color: var(--white);
         }
         
-        .model-type-section:last-child {
-            border-bottom: none;
+        /* Utilitários */
+        .hidden {
+            display: none !important;
         }
         
-        .select-header-model-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
+        /* Cards futuristas */
+        .card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-lg);
+            backdrop-filter: var(--glass-backdrop);
+            box-shadow: var(--shadow-lg);
+            margin-bottom: var(--spacing-lg);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: var(--primary);
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-xl);
+            border-color: rgba(102, 126, 234, 0.3);
+        }
+
+        /* Seção de boas-vindas futurista */
+        .welcome-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: var(--spacing-xl) 0;
+            text-align: center;
+        }
+
+        .welcome-card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-xl);
+            padding: var(--spacing-xl);
+            max-width: 900px;
+            width: 100%;
+            backdrop-filter: var(--glass-backdrop);
+            box-shadow: var(--shadow-xl);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .welcome-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--primary);
+        }
+
+        .welcome-card h2 {
+            font-size: 3rem;
+            font-weight: 900;
+            margin-bottom: var(--spacing-lg);
+            text-align: center;
+        }
+
+        /* Features grid futurista */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: var(--spacing-lg);
+            margin: var(--spacing-xl) 0;
+        }
+
+        .feature-item {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-lg);
+            text-align: center;
+            backdrop-filter: var(--glass-backdrop);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: var(--secondary);
+            transform: scaleX(0);
+            transition: transform 0.3s ease;
+        }
+
+        .feature-item:hover::before {
+            transform: scaleX(1);
+        }
+
+        .feature-item:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: var(--shadow-xl);
+            border-color: rgba(139, 92, 246, 0.3);
+        }
+
+        .feature-item i {
+            font-size: 3rem;
+            background: var(--secondary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: var(--spacing-md);
+            filter: drop-shadow(0 0 10px rgba(240, 147, 251, 0.3));
+        }
+
+        .feature-item h3 {
+            font-size: 1.5rem;
+            margin-bottom: var(--spacing-sm);
+            color: var(--white);
+        }
+
+        .feature-item p {
+            color: var(--medium-light);
+            line-height: 1.6;
+        }
+
+        /* CTA Container */
+        .cta-container {
+            margin-top: var(--spacing-xl);
+            text-align: center;
+        }
+
+        .admin-options {
+            margin-top: var(--spacing-xl);
+            padding-top: var(--spacing-lg);
+            border-top: 1px solid var(--glass-border);
+        }
+
+        .admin-options h4 {
+            color: var(--medium-light);
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: var(--spacing-md);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .admin-buttons {
+            display: flex;
+            justify-content: center;
+            gap: var(--spacing-md);
+            flex-wrap: wrap;
+        }
+
+        /* Modais futuristas */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 15, 35, 0.9);
+            backdrop-filter: var(--glass-backdrop);
+            z-index: 2000;
+            animation: modalFadeIn 0.3s ease;
+        }
+
+        @keyframes modalFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            margin: 5% auto;
+            padding: var(--spacing-xl);
+            border-radius: var(--radius-xl);
+            max-width: 600px;
+            position: relative;
+            backdrop-filter: var(--glass-backdrop);
+            box-shadow: var(--shadow-xl);
+            animation: modalSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes modalSlideIn {
+            from { 
+                transform: translateY(-50px) scale(0.9);
+                opacity: 0;
+            }
+            to { 
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        .close-modal {
+            position: absolute;
+            top: var(--spacing-md);
+            right: var(--spacing-md);
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 50%;
+            color: var(--medium-light);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1.25rem;
+        }
+
+        .close-modal:hover {
+            background: var(--error-solid);
+            color: var(--white);
+            transform: rotate(90deg);
+        }
+
+        /* Formulários futuristas */
+        .form-group {
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: var(--spacing-xs);
+            font-weight: 600;
+            color: var(--white);
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: var(--spacing-sm);
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            font-family: var(--font-primary);
+            font-size: 1rem;
+            color: var(--white);
+            backdrop-filter: var(--glass-backdrop);
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            border-color: var(--primary-solid);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .form-group input::placeholder,
+        .form-group textarea::placeholder {
+            color: var(--medium);
+        }
+
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--spacing-md);
+            margin-top: var(--spacing-xl);
+        }
+
+        /* Status containers futuristas */
+        .status-container {
+            text-align: center;
+            padding: var(--spacing-md);
+            margin: var(--spacing-md) 0;
+            border-radius: var(--radius-md);
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: var(--glass-backdrop);
+        }
+
+        .status-container.success {
+            border-color: var(--success-solid);
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        .status-container.error {
+            border-color: var(--error-solid);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .status-container.warning {
+            border-color: var(--warning-solid);
+            background: rgba(245, 158, 11, 0.1);
+        }
+
+        .status-container.info {
+            border-color: var(--info-solid);
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        /* Lista de modelos futurista */
+        .models-list {
+            margin-top: var(--spacing-md);
+        }
+
+        .model-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--spacing-md);
+            margin-bottom: var(--spacing-sm);
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            backdrop-filter: var(--glass-backdrop);
+            transition: all 0.3s ease;
+        }
+
+        .model-item:hover {
+            transform: translateX(4px);
+            border-color: var(--primary-solid);
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .model-info {
+            flex: 1;
+        }
+
+        .model-name {
+            font-weight: 600;
+            color: var(--white);
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .model-meta {
+            font-size: 0.875rem;
+            color: var(--medium-light);
+        }
+
+        .model-actions {
+            display: flex;
+            gap: var(--spacing-xs);
         }
     </style>
 </body>

@@ -381,4 +381,299 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     `;
     document.head.appendChild(style);
+
+/**
+ * JavaScript para o seletor de modelo no header
+ * Sistema de combobox compacto que mostra apenas o último modelo de cada LLM
+ */
+
+class HeaderModelSelector {
+    constructor() {
+        this.currentModel = null;
+        this.availableModels = {};
+        this.isLoading = false;
+        
+        // Elementos DOM
+        this.dropdown = document.getElementById('headerModelDropdown');
+        this.dropdownButton = document.getElementById('headerModelDropdownButton');
+        this.dropdownMenu = document.getElementById('headerModelDropdownMenu');
+        this.currentModelText = document.getElementById('headerCurrentModelText');
+        this.currentModelIcon = document.getElementById('headerCurrentModelIcon');
+        
+        this.init();
+    }
+    
+    init() {
+        this.setupEventListeners();
+        this.loadCurrentModel();
+    }
+    
+    setupEventListeners() {
+        // Toggle dropdown
+        if (this.dropdownButton) {
+            this.dropdownButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleDropdown();
+            });
+        }
+        
+        // Fechar dropdown ao clicar fora
+        document.addEventListener('click', (e) => {
+            if (!this.dropdown.contains(e.target)) {
+                this.closeDropdown();
+            }
+        });
+        
+        // Fechar dropdown com ESC
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.closeDropdown();
+            }
+        });
+    }
+    
+    getModelIcon(type) {
+        const icons = {
+            claude: 'brain',
+            openai: 'bolt',
+            gemini: 'gem'
+        };
+        return icons[type] || 'robot';
+    }
+    
+    getModelDisplayName(type) {
+        const names = {
+            claude: 'Claude',
+            openai: 'GPT-4',
+            gemini: 'Gemini'
+        };
+        return names[type] || type.toUpperCase();
+    }
+    
+    async loadCurrentModel() {
+        try {
+            const response = await fetch('/api/current-model');
+            if (response.ok) {
+                const data = await response.json();
+                if (data && data.model) {
+                    this.currentModel = data.model.type;
+                    this.updateCurrentModelDisplay(data.model.type);
+                } else {
+                    this.updateCurrentModelDisplay(null);
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao carregar modelo atual:', error);
+            this.updateCurrentModelDisplay(null);
+        }
+    }
+    
+    updateCurrentModelDisplay(modelType) {
+        if (modelType) {
+            const displayName = this.getModelDisplayName(modelType);
+            const iconName = this.getModelIcon(modelType);
+            
+            this.currentModelText.textContent = displayName;
+            this.currentModelIcon.className = `model-icon ${modelType}`;
+            this.currentModelIcon.innerHTML = `<i class="fas fa-${iconName}"></i>`;
+        } else {
+            this.currentModelText.textContent = 'Nenhum modelo';
+            this.currentModelIcon.className = 'model-icon';
+            this.currentModelIcon.innerHTML = '<i class="fas fa-robot"></i>';
+        }
+    }
+    
+    async loadAvailableModels() {
+        if (this.isLoading) return;
+        
+        this.isLoading = true;
+        this.dropdownMenu.innerHTML = '<div class="spinner" style="width: 16px; height: 16px; margin: var(--spacing-sm) auto;"></div>';
+        
+        try {
+            const response = await fetch('/api/models');
+            if (response.ok) {
+                const data = await response.json();
+                
+                if (!data.models || data.models.length === 0) {
+                    this.dropdownMenu.innerHTML = `
+                        <div class="no-models-message">
+                            <i class="fas fa-info-circle"></i> Nenhum modelo treinado disponível
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Organizar modelos por tipo e pegar apenas o mais recente de cada
+                const latestModels = {};
+                data.models.forEach(model => {
+                    if (!latestModels[model.type] || new Date(model.created) > new Date(latestModels[model.type].created)) {
+                        latestModels[model.type] = model;
+                    }
+                });
+                
+                this.availableModels = latestModels;
+                this.renderModelDropdown(latestModels);
+                
+            } else {
+                throw new Error('Falha ao carregar modelos');
+            }
+        } catch (error) {
+            console.error('Erro ao carregar modelos:', error);
+            this.dropdownMenu.innerHTML = `
+                <div class="no-models-message">
+                    <i class="fas fa-exclamation-triangle"></i> Erro ao carregar modelos
+                </div>
+            `;
+        } finally {
+            this.isLoading = false;
+        }
+    }
+    
+    renderModelDropdown(latestModels) {
+        let html = '';
+        const modelTypes = ['claude', 'openai', 'gemini'];
+        
+        modelTypes.forEach(type => {
+            if (latestModels[type]) {
+                const model = latestModels[type];
+                const isActive = this.currentModel === type;
+                const displayName = this.getModelDisplayName(type);
+                const iconName = this.getModelIcon(type);
+                
+                html += `
+                    <div class="dropdown-section">
+                        <div class="dropdown-section-title">${displayName}</div>
+                        <div class="dropdown-item ${isActive ? 'active' : ''}" data-model-type="${type}">
+                            <div class="model-icon ${type}">
+                                <i class="fas fa-${iconName}"></i>
+                            </div>
+                            <div class="dropdown-item-text">
+                                <div>${model.name}</div>
+                                <div class="dropdown-item-meta">Criado: ${model.created}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        });
+        
+        if (html === '') {
+            html = '<div class="no-models-message">Nenhum modelo disponível</div>';
+        }
+        
+        this.dropdownMenu.innerHTML = html;
+        
+        // Adicionar event listeners aos itens
+        this.dropdownMenu.querySelectorAll('.dropdown-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const modelType = item.dataset.modelType;
+                if (modelType && modelType !== this.currentModel) {
+                    this.changeModel(modelType, item);
+                }
+            });
+        });
+    }
+    
+    async changeModel(modelType, itemElement) {
+        if (this.isLoading) return;
+        
+        try {
+            this.isLoading = true;
+            
+            // Mostrar loader no item
+            if (itemElement) {
+                const originalContent = itemElement.innerHTML;
+                itemElement.innerHTML = '<div class="spinner" style="width: 12px; height: 12px; margin: 4px auto;"></div>';
+            }
+            
+            const response = await fetch('/api/change-model', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ model_type: modelType }),
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                this.showNotification(data.message, 'success');
+                this.currentModel = modelType;
+                this.updateCurrentModelDisplay(modelType);
+                this.closeDropdown();
+                
+                // Recarregar a página se estivermos no chat para atualizar o contexto
+                if (window.location.pathname.includes('/chat')) {
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                }
+            } else {
+                this.showNotification(data.message, 'error');
+                // Recarregar a lista de modelos para restaurar o estado
+                await this.loadAvailableModels();
+            }
+        } catch (error) {
+            console.error('Erro ao alterar modelo:', error);
+            this.showNotification(`Erro ao alterar modelo: ${error.message}`, 'error');
+            await this.loadAvailableModels();
+        } finally {
+            this.isLoading = false;
+        }
+    }
+    
+    toggleDropdown() {
+        if (this.dropdown.classList.contains('open')) {
+            this.closeDropdown();
+        } else {
+            this.openDropdown();
+        }
+    }
+    
+    openDropdown() {
+        this.dropdown.classList.add('open');
+        this.loadAvailableModels();
+    }
+    
+    closeDropdown() {
+        this.dropdown.classList.remove('open');
+    }
+    
+    showNotification(message, type = 'info') {
+        const notification = document.getElementById('globalNotification');
+        if (!notification) return;
+        
+        const content = notification.querySelector('.notification-content');
+        
+        content.className = `notification-content ${type}`;
+        content.querySelector('p').textContent = message;
+        
+        notification.style.display = 'block';
+        
+        // Auto close
+        setTimeout(() => {
+            notification.style.display = 'none';
+        }, 5000);
+        
+        // Close button
+        const closeBtn = content.querySelector('.close-notification');
+        if (closeBtn) {
+            closeBtn.onclick = () => {
+                notification.style.display = 'none';
+            };
+        }
+    }
+}
+
+// Inicializar quando o DOM estiver carregado
+document.addEventListener('DOMContentLoaded', function() {
+    // Só inicializar se os elementos existirem
+    if (document.getElementById('headerModelDropdown')) {
+        new HeaderModelSelector();
+    }
 });
+
+// Função global para compatibilidade com outros scripts
+window.HeaderModelSelector = HeaderModelSelector;
+});
+
