@@ -721,3 +721,17 @@ a:hover::after {
         justify-content: center;
     }
 }
+/* Adicionar ao final do main.css */
+
+/* Classe especial para página de chat - remove padding/margin do container */
+.app-content.chat-page .container {
+    max-width: 100%;
+    padding: 0;
+    margin: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.app-content.chat-page {
+    padding: 0;
+}

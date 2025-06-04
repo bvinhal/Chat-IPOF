@@ -7,16 +7,9 @@
 {% endblock %}
 
 {% block content %}
-<div class="chat-container">
+<!-- Remove o container padrão e aplica o chat diretamente -->
+<div class="chat-container-fullwidth">
     <aside class="chat-sidebar">
-        <div class="model-selection">
-            <h3>Modelo Atual</h3>
-            <div class="current-model">
-                <span id="currentModelName">Carregando...</span>
-                <button id="changeModelBtn" class="small-button">Alterar</button>
-            </div>
-        </div>
-        
         <div class="conversation-nav">
             <h3>Conversas</h3>
             <button id="newConversationBtn" class="secondary-button">
@@ -37,9 +30,6 @@
     </aside>
     
     <section class="chat-main">
-        <div class="chat-header">
-            <h2>Conversa com o Assistente</h2>
-        </div>
         
         <div id="chatMessages" class="chat-messages">
             <div class="message system">
