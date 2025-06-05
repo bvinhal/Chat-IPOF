@@ -16,10 +16,10 @@
 /* Variáveis CSS - Tema Futurista */
 :root {
     /* Cores principais - Gradientes futuristas */
-    --primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    --primary-solid: #667eea;
-    --primary-dark: #4c63d2;
-    --primary-light: #8796f0;
+    --primary: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+    --primary-solid: #4F46E5;
+    --primary-dark: #3730A3;
+    --primary-light: #A78BFA;
     --secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
     --secondary-solid: #f093fb;
     
@@ -30,15 +30,15 @@
     --accent-pink: #EC4899;
     
     /* Neutros modernos */
-    --dark: #0F0F23;
-    --dark-secondary: #1A1A2E;
-    --dark-tertiary: #16213E;
-    --medium-dark: #2D3748;
-    --medium: #4A5568;
-    --medium-light: #A0AEC0;
-    --light: #E2E8F0;
-    --ultra-light: #F7FAFC;
-    --white: #FFFFFF;
+    --dark: #F8FAFC; /* Era #0F0F23 - agora muito claro */
+    --dark-secondary: #F1F5F9; /* Era #1A1A2E */
+    --dark-tertiary: #E2E8F0; /* Era #16213E */
+    --medium-dark: #64748B; /* Era #2D3748 */
+    --medium: #94A3B8; /* Era #4A5568 */
+    --medium-light: #475569; /* Era #A0AEC0 */
+    --light: #1E293B; /* Era #E2E8F0 - agora escuro para contraste */
+    --ultra-light: #0F172A; /* Era #F7FAFC - agora escuro */
+    --white: #0F172A; /* Era #FFFFFF - agora escuro para texto */
     
     /* Cores de estado - Modernas */
     --success: linear-gradient(135deg, #10B981 0%, #34D399 100%);
@@ -81,8 +81,8 @@
     --shadow-glow: 0 0 30px rgba(139, 92, 246, 0.4);
     
     /* Glassmorphism */
-    --glass-bg: rgba(255, 255, 255, 0.1);
-    --glass-border: rgba(255, 255, 255, 0.2);
+    --glass-bg: rgba(255, 255, 255, 0.8); /* Era rgba(255, 255, 255, 0.1) */
+    --glass-border: rgba(148, 163, 184, 0.3); /* Era rgba(255, 255, 255, 0.2) */
     --glass-backdrop: blur(20px);
 }
 
@@ -104,12 +104,11 @@ body {
     font-size: 16px;
     line-height: 1.6;
     color: var(--white);
-    background: linear-gradient(135deg, var(--dark) 0%, var(--dark-secondary) 50%, var(--dark-tertiary) 100%);
+    background: linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 50%, #CBD5E1 100%); /* Gradiente claro */
     min-height: 100vh;
     overflow-x: hidden;
 }
 
-/* Background animado */
 body::before {
     content: '';
     position: fixed;
@@ -118,8 +117,8 @@ body::before {
     width: 100%;
     height: 100%;
     background: 
-        radial-gradient(circle at 20% 80%, rgba(102, 126, 234, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 20% 80%, rgba(79, 70, 229, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(124, 58, 237, 0.08) 0%, transparent 50%),
         radial-gradient(circle at 40% 40%, rgba(59, 130, 246, 0.05) 0%, transparent 50%);
     pointer-events: none;
     z-index: -1;
@@ -137,6 +136,11 @@ h1, h2, h3, h4, h5, h6 {
     background-clip: text;
 }
 
+p {
+    margin-bottom: var(--spacing-sm);
+    color: var(--medium-light); /* Agora mais escuro para contraste */
+}
+
 h1 { font-size: 3rem; font-weight: 900; }
 h2 { font-size: 2.5rem; font-weight: 800; }
 h3 { font-size: 2rem; font-weight: 700; }
@@ -144,10 +148,6 @@ h4 { font-size: 1.5rem; font-weight: 600; }
 h5 { font-size: 1.25rem; font-weight: 600; }
 h6 { font-size: 1rem; font-weight: 600; }
 
-p {
-    margin-bottom: var(--spacing-sm);
-    color: var(--medium-light);
-}
 
 /* Links futuristas */
 a {
@@ -197,11 +197,12 @@ a:hover::after {
     top: 0;
     z-index: 1000;
     height: var(--header-height);
-    background: var(--glass-bg);
+    background: rgba(248, 250, 252, 0.95); /* Fundo claro */
     backdrop-filter: var(--glass-backdrop);
-    border-bottom: 1px solid var(--glass-border);
-    box-shadow: var(--shadow-md);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
+
 
 .header-content {
     display: flex;
