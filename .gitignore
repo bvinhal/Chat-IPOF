@@ -49,3 +49,4 @@ data/natureza_v2/mcasp_oficial_enriquecido_v2_embeddings.npz
 data/natureza_v2/mcasp_oficial_enriquecido_v2_texts.json
 data/natureza_v2/mcasp_oficial_enriquecido_v2.json
 data/natureza_v2/subelementos_goias_processados.json
+data/natureza/naturezas_por_elemento_enriquecido.xlsx
