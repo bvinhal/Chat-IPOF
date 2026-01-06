@@ -182,6 +182,10 @@ class BaseNaturezaClassifier(ABC):
             'samples': len(y)
         }
         
+        # Adicionar training_time se disponível
+        if 'training_time' in self.metrics:
+            metrics['training_time'] = self.metrics['training_time']
+        
         # Calcular Top-3 Accuracy se o modelo suporta predict_proba
         if hasattr(self.model, 'predict_proba'):
             y_proba = self.model.predict_proba(X)
@@ -199,6 +203,8 @@ class BaseNaturezaClassifier(ABC):
         if 'top_3_accuracy' in metrics:
             logger.info(f"  Top-3 Accuracy: {metrics['top_3_accuracy']:.4f}")
         logger.info(f"  Tempo de predição: {metrics['prediction_time']:.4f}s")
+        if 'training_time' in metrics:
+            logger.info(f"  Tempo de treino: {metrics['training_time']:.4f}s")
         
         return metrics
     

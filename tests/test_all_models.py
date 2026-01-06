@@ -255,8 +255,7 @@ def test_complete_workflow():
         logger.info("\n📊 RESULTADOS:")
         logger.info(f"   Accuracy: {metrics['accuracy']:.4f}")
         logger.info(f"   Macro F1-Score: {metrics['f1_macro']:.4f}")
-        if 'training_time' in metrics:
-            logger.info(f"   Tempo de treino: {metrics['training_time']:.2f}s")
+        logger.info(f"   Tempo de treino: {metrics['training_time']:.2f}s")
         
         # 5. Testar predição
         logger.info("\n5. Testando predição...")
