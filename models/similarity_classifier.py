@@ -182,6 +182,102 @@ class SimilarityNaturezaClassifier(BaseNaturezaClassifier):
         
         return results
     
+    def evaluate(self, dataset: str = 'test'):
+        """
+        Avalia o modelo usando busca por similaridade.
+        
+        Sobrescreve o método da classe base porque o Similarity usa
+        vetores TF-IDF diretamente ao invés de chamar predict().
+        
+        Args:
+            dataset: 'train', 'val' ou 'test'
+            
+        Returns:
+            Dicionário com métricas de avaliação
+        """
+        if self.X_train_vec is None:
+            raise ValueError("Modelo não treinado.")
+        
+        if self.data is None:
+            raise ValueError("Dados não carregados.")
+        
+        # Selecionar conjunto de dados
+        if dataset == 'train':
+            X = self.data['X_train_vec']
+            y = self.data['y_train_encoded']
+        elif dataset == 'val':
+            X = self.data['X_val_vec']
+            y = self.data['y_val_encoded']
+        elif dataset == 'test':
+            X = self.data['X_test_vec']
+            y = self.data['y_test_encoded']
+        else:
+            raise ValueError(f"Dataset inválido: {dataset}")
+        
+        logger.info(f"Avaliando modelo em conjunto de {dataset}...")
+        
+        import time
+        from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+        
+        start_time = time.time()
+        
+        # Fazer predições para cada amostra
+        y_pred = []
+        for i in range(X.shape[0]):
+            # Calcular similaridade com todos os exemplos de treino
+            similarities = cosine_similarity(X[i], self.X_train_vec)[0]
+            
+            # Encontrar exemplo mais similar
+            most_similar_idx = np.argmax(similarities)
+            
+            # Obter natureza correspondente
+            pred_encoded = self.y_train[most_similar_idx]
+            y_pred.append(pred_encoded)
+        
+        y_pred = np.array(y_pred)
+        prediction_time = time.time() - start_time
+        
+        # Calcular métricas
+        metrics = {
+            'accuracy': accuracy_score(y, y_pred),
+            'f1_macro': f1_score(y, y_pred, average='macro', zero_division=0),
+            'f1_weighted': f1_score(y, y_pred, average='weighted', zero_division=0),
+            'precision_macro': precision_score(y, y_pred, average='macro', zero_division=0),
+            'recall_macro': recall_score(y, y_pred, average='macro', zero_division=0),
+            'prediction_time': prediction_time,
+            'samples': len(y)
+        }
+        
+        # Adicionar training_time se disponível
+        if 'training_time' in self.metrics:
+            metrics['training_time'] = self.metrics['training_time']
+        
+        # Calcular Top-3 Accuracy manualmente
+        logger.info("Calculando Top-3 Accuracy...")
+        top_3_correct = 0
+        for i in range(X.shape[0]):
+            similarities = cosine_similarity(X[i], self.X_train_vec)[0]
+            top_3_indices = np.argsort(similarities)[-3:]
+            top_3_labels = self.y_train[top_3_indices]
+            if y[i] in top_3_labels:
+                top_3_correct += 1
+        
+        metrics['top_3_accuracy'] = top_3_correct / len(y)
+        
+        # Salvar métricas
+        self.metrics[f'{dataset}_metrics'] = metrics
+        
+        # Log das métricas
+        logger.info(f"Métricas ({dataset}):")
+        logger.info(f"  Accuracy: {metrics['accuracy']:.4f}")
+        logger.info(f"  Macro F1-Score: {metrics['f1_macro']:.4f}")
+        logger.info(f"  Top-3 Accuracy: {metrics['top_3_accuracy']:.4f}")
+        logger.info(f"  Tempo de predição: {metrics['prediction_time']:.4f}s")
+        if 'training_time' in metrics:
+            logger.info(f"  Tempo de treino: {metrics['training_time']:.4f}s")
+        
+        return metrics
+    
     def find_similar_examples(self, text: str, k: int = 5) -> List[Tuple[str, str, float]]:
         """
         Encontra os k exemplos mais similares no conjunto de treino.
