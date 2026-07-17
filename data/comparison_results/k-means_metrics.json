@@ -1,0 +1,10 @@
+{
+  "accuracy": 0.0,
+  "f1_macro": 0.0,
+  "f1_weighted": 0.0,
+  "precision_macro": 0.0,
+  "recall_macro": 0.0,
+  "prediction_time": 0.01882791519165039,
+  "samples": 255,
+  "training_time": 4.3472580909729
+}

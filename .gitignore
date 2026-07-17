@@ -50,3 +50,10 @@ data/natureza_v2/mcasp_oficial_enriquecido_v2_texts.json
 data/natureza_v2/mcasp_oficial_enriquecido_v2.json
 data/natureza_v2/subelementos_goias_processados.json
 data/natureza/naturezas_por_elemento_enriquecido.xlsx
+data/natureza/natureza_despesa_final.xlsx
+models/__pycache__/__init__.cpython-310.pyc
+models/__pycache__/ai_model.cpython-310.pyc
+models/__pycache__/claude_model.cpython-310.pyc
+models/__pycache__/gemini_model.cpython-310.pyc
+models/__pycache__/openai_model.cpython-310.pyc
+utils/__pycache__/document_utils.cpython-310.pyc
